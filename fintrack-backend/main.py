@@ -80,7 +80,7 @@ def get_banks_summary() -> list[dict[str, object]]:
         valuation = report.get("valuation") or {}
         summaries.append(
             {
-                "symbol": report.get("symbol", symbol),
+                "symbol": symbol,
                 "company_name": report.get("company_name"),
                 "last_close_price": overview.get(
                     "last_close_price", valuation.get("last_close_price")
@@ -96,7 +96,7 @@ def get_banks_summary() -> list[dict[str, object]]:
 
 @app.get("/api/banks/{symbol}/history")
 def get_bank_history(symbol: str, start: date, end: date) -> list[dict[str, object]]:
-    normalized_symbol = symbol.upper()
+    normalized_symbol = symbol.upper().removesuffix(".JK")
     if normalized_symbol not in BANK_SYMBOLS:
         raise HTTPException(status_code=404, detail="Simbol bank tidak didukung.")
     if start > end:
