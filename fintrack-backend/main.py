@@ -1,3 +1,5 @@
+from datetime import date
+
 import requests
 from fastapi import FastAPI, HTTPException
 
@@ -61,3 +63,75 @@ def get_banks_summary() -> list[dict[str, object]]:
         )
 
     return summaries
+
+
+@app.get("/api/banks/{symbol}/history")
+def get_bank_history(symbol: str, start: date, end: date) -> list[dict[str, object]]:
+    normalized_symbol = symbol.upper()
+    if normalized_symbol not in BANK_SYMBOLS:
+        raise HTTPException(status_code=404, detail="Simbol bank tidak didukung.")
+    if start > end:
+        raise HTTPException(
+            status_code=422,
+            detail="Tanggal start harus lebih awal atau sama dengan end.",
+        )
+    if not SECTORS_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="SECTORS_API_KEY belum dikonfigurasi di file .env.",
+        )
+
+    url = f"{SECTORS_API_BASE_URL}/daily/{normalized_symbol}/"
+    try:
+        response = requests.get(
+            url,
+            headers={"Authorization": SECTORS_API_KEY},
+            params={"start": start.isoformat(), "end": end.isoformat()},
+            timeout=15,
+        )
+        response.raise_for_status()
+        records = response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gagal mengambil histori Sectors untuk {normalized_symbol}.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Sectors mengembalikan JSON histori yang tidak valid.",
+        ) from exc
+
+    if not isinstance(records, list):
+        raise HTTPException(
+            status_code=502,
+            detail="Format data histori dari Sectors tidak sesuai.",
+        )
+
+    fields = ("date", "open", "high", "low", "close", "volume")
+    return [
+        {field: record.get(field) for field in fields}
+        for record in records
+        if isinstance(record, dict)
+    ]
+
+
+@app.get("/api/banks/ranking")
+def get_banks_ranking() -> list[dict[str, object]]:
+    summaries = get_banks_summary()
+    ordered = sorted(
+        summaries,
+        key=lambda bank: (
+            bank["daily_close_change"] is not None,
+            bank["daily_close_change"] or 0,
+        ),
+        reverse=True,
+    )
+    return [
+        {
+            "rank": rank,
+            "symbol": bank["symbol"],
+            "daily_close_change": bank["daily_close_change"],
+        }
+        for rank, bank in enumerate(ordered, start=1)
+    ]
