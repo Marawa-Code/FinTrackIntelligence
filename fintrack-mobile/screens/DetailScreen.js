@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit/v2';
 
+import Disclaimer from '../components/Disclaimer';
 import { BASE_URL } from '../config/api';
 
 export default function DetailScreen({ route }) {
@@ -103,6 +104,8 @@ export default function DetailScreen({ route }) {
           </Pressable>
         </View>
       )}
+
+      <Disclaimer />
     </ScrollView>
   );
 }

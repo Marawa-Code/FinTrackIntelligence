@@ -9,10 +9,13 @@ import {
   View,
 } from 'react-native';
 
+import Disclaimer from '../components/Disclaimer';
 import { BASE_URL } from '../config/api';
+import { changeTone, scoreTone } from '../utils/scoreTone';
 
 export default function HomeScreen({ navigation }) {
   const [banks, setBanks] = useState([]);
+  const [scores, setScores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -24,13 +27,32 @@ export default function HomeScreen({ navigation }) {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`${BASE_URL}/api/banks/summary`);
-        if (!response.ok) {
-          throw new Error(`Permintaan gagal (${response.status})`);
+        const [summaryResponse, intelligenceResponse] = await Promise.all([
+          fetch(`${BASE_URL}/api/banks/summary`),
+          fetch(`${BASE_URL}/api/banks/intelligence`).catch(() => null),
+        ]);
+        if (!summaryResponse.ok) {
+          throw new Error(`Permintaan gagal (${summaryResponse.status})`);
         }
-        const data = await response.json();
+        const data = await summaryResponse.json();
         if (!Array.isArray(data)) throw new Error('Format data tidak sesuai.');
-        if (isMounted) setBanks(data);
+
+        // Skor bersifat pelengkap: kalau endpoint skor bermasalah, kartu bank
+        // tetap tampil tanpa badge skor.
+        let intelligence = [];
+        if (intelligenceResponse && intelligenceResponse.ok) {
+          try {
+            const parsed = await intelligenceResponse.json();
+            if (Array.isArray(parsed)) intelligence = parsed;
+          } catch (error) {
+            console.warn('Format data skor tidak sesuai:', error);
+          }
+        }
+
+        if (isMounted) {
+          setBanks(data);
+          setScores(intelligence);
+        }
       } catch (error) {
         console.warn('Gagal memuat ringkasan bank:', error);
         if (isMounted) setError('Ringkasan bank belum dapat dimuat. Periksa koneksi dan alamat backend.');
@@ -54,12 +76,14 @@ export default function HomeScreen({ navigation }) {
     );
   }
 
+  const scoreBySymbol = new Map(scores.map((item) => [item.symbol, item]));
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.heading}>
         <Text style={styles.eyebrow}>PASAR SAHAM INDONESIA</Text>
         <Text style={styles.title}>Bank pilihan</Text>
-        <Text style={styles.subtitle}>Ringkasan harga dan perubahan harian</Text>
+        <Text style={styles.subtitle}>Harga, perubahan harian, dan skor relatif</Text>
       </View>
 
       {banks.length === 0 ? (
@@ -74,9 +98,11 @@ export default function HomeScreen({ navigation }) {
         banks.map((bank) => {
           const change = bank.daily_close_change;
           const displaySymbol = String(bank.symbol ?? '').replace(/\.JK$/i, '');
-          const changeColor = change == null ? '#71817D' : change >= 0 ? '#16835D' : '#C34F54';
-        const changeLabel =
-          change == null ? '—' : `${change > 0 ? '+' : ''}${(change * 100).toFixed(2)}%`;
+          const changeColor = changeTone(change);
+          const changeLabel =
+            change == null ? '—' : `${change > 0 ? '+' : ''}${(change * 100).toFixed(2)}%`;
+          const intelligence = scoreBySymbol.get(bank.symbol);
+          const score = intelligence?.score;
 
           return (
             <TouchableOpacity
@@ -90,6 +116,20 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.companyName} numberOfLines={2}>
                   {bank.company_name ?? displaySymbol}
                 </Text>
+                {score != null ? (
+                  <View style={styles.badgeRow}>
+                    <View style={[styles.scorePill, { borderColor: scoreTone(score) }]}>
+                      <Text style={[styles.scorePillText, { color: scoreTone(score) }]}>
+                        Skor {Math.round(score)}
+                      </Text>
+                    </View>
+                    {intelligence?.anomaly?.is_anomaly ? (
+                      <View style={styles.anomalyPill}>
+                        <Text style={styles.anomalyPillText}>Anomali</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
               <View style={styles.priceInfo}>
                 <Text style={styles.price}>
@@ -107,6 +147,8 @@ export default function HomeScreen({ navigation }) {
       <Pressable style={styles.rankingButton} onPress={() => navigation.navigate('Ranking')}>
         <Text style={styles.rankingButtonText}>Lihat ranking harian</Text>
       </Pressable>
+
+      <Disclaimer />
     </ScrollView>
   );
 }
@@ -231,5 +273,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginTop: 5,
+  },
+  badgeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+  },
+  scorePill: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  scorePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  anomalyPill: {
+    backgroundColor: '#FBEEE9',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  anomalyPillText: {
+    color: '#B4472F',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
