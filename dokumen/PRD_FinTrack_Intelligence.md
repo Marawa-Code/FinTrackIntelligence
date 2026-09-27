@@ -35,17 +35,20 @@ Pelaku bisnis dan investor di Indonesia kesulitan memantau **sinyal dan pola pas
 ## 5. Scope — MVP (Minimum Viable Product)
 
 ### 5.1 In Scope (wajib ada untuk submission)
-- [ ] **Data ingestion**: ambil data resmi dari Sectors API untuk 4 emiten sektor perbankan: `BBCA`, `BBRI`, `BMRI`, `BBNI`
-- [ ] **Penyimpanan data**: simpan hasil fetch ke local storage/database (supaya hemat API credit, tidak fetch berulang)
-- [ ] **Pengolahan sinyal**: hitung minimal 1 indikator turunan, contoh:
-  - % perubahan harga (harian/mingguan/bulanan)
-  - Moving average sederhana (7 hari / 30 hari)
-  - Skor relatif antar perusahaan dalam 1 subsektor (ranking berdasarkan market cap growth, dsb)
-- [ ] **Tampilan hasil**: dashboard atau report yang menampilkan:
-  - Tabel/kartu ringkasan per perusahaan
-  - Grafik tren harga
-  - Ranking/perbandingan antar perusahaan dalam sektor yang sama
-- [ ] **Deliverable hackathon**: repo publik, video teaser 1 menit, video judging maks 3 menit, 1 kalimat problem statement, snapshot tim, link post sosial media (lihat Section 9)
+
+Status di bawah menandai apa yang **benar-benar sudah dibangun**, bukan apa yang direncanakan.
+
+- [x] **Data ingestion**: ambil data resmi dari Sectors API untuk 4 emiten sektor perbankan: `BBCA`, `BBRI`, `BMRI`, `BBNI`
+- [x] **Penyimpanan data**: hindari fetch berulang supaya kredit Sectors tidak terbuang — dipenuhi oleh cache **in-memory ber-TTL** (ringkasan 5 menit, histori 1 jam). Cache ini **hilang setiap backend dimulai ulang**; penyimpanan permanen (SQLite/JSON) tidak dibangun untuk MVP dan masuk rencana lanjutan
+- [x] **Pengolahan sinyal**: indikator turunan yang sudah dihitung:
+  - [x] % perubahan harga harian dan tren sepanjang jendela analisis
+  - [x] Moving average sederhana (MA7 / MA30)
+  - [x] Skor komposit relatif 0–100 antar emiten perbankan, plus deteksi anomali berbasis z-score
+- [x] **Tampilan hasil**: aplikasi mobile yang menampilkan:
+  - [x] Kartu ringkasan per perusahaan
+  - [x] Grafik tren harga (30 hari bursa terakhir)
+  - [x] Ranking/perbandingan antar perusahaan dalam sektor yang sama
+- [ ] **Deliverable hackathon**: repo publik ✅, 1 kalimat problem statement ✅, video teaser 1 menit ⬜, video judging maks 3 menit ⬜, snapshot tim ⬜, link post sosial media ⬜ (lihat Section 9)
 
 ### 5.2 Out of Scope (untuk MVP, bisa jadi pengembangan lanjutan)
 - Data media sosial (sentiment analysis dari Twitter/X, dsb) — bukan bagian dari Sectors API, butuh integrasi tambahan terpisah
@@ -82,12 +85,12 @@ Pelaku bisnis dan investor di Indonesia kesulitan memantau **sinyal dan pola pas
 | Layer | Opsi rekomendasi | Alasan |
 |---|---|---|
 | Data fetching | Python + `requests` | Sudah terbukti jalan, sederhana |
-| Penyimpanan | SQLite / file JSON lokal | Ringan, tidak perlu server database terpisah untuk MVP |
-| Pengolahan data | Python (`pandas` untuk perhitungan tren/agregasi) | Standar untuk analisis data tabular |
-| Tampilan/dashboard | Streamlit atau halaman web (HTML/JS) | Cepat dibuat, cocok untuk demo hackathon |
+| Penyimpanan | Cache in-memory ber-TTL (ringkasan 5 menit, histori 1 jam) | Cukup untuk demo lokal dan tidak butuh server database terpisah. Tidak bertahan saat restart |
+| Pengolahan data | Python `math` + `statistics` (stdlib) | Perhitungan untuk 4 emiten tidak sepadan dengan menambah dependensi `pandas` |
+| Tampilan/dashboard | React Native + Expo (mobile) | Demo cukup scan QR lewat Expo Go, terasa seperti produk nyata dan mudah direkam untuk video |
 | Penjadwalan (opsional) | `schedule` (Python) atau cron job | Untuk "berkelanjutan" sesuai deskripsi produk |
 
-*(AI agent dipersilakan mengusulkan stack alternatif bila lebih efisien, selama memenuhi requirement fungsional di atas.)*
+*(Tabel ini sudah disesuaikan dengan yang benar-benar dibangun. Tiga alternatif diambil karena lebih cocok untuk demo hackathon: mobile alih-alih web, stdlib alih-alih `pandas`, dan cache in-memory alih-alih database.)*
 
 ## 8. System Architecture (high-level)
 
@@ -95,7 +98,7 @@ Pelaku bisnis dan investor di Indonesia kesulitan memantau **sinyal dan pola pas
 [Sectors API] 
      │ (HTTP GET + API key)
      ▼
-[Data Ingestion Layer] → simpan mentah ke [Local Storage/DB]
+[Data Ingestion Layer] → simpan mentah ke [Cache in-memory ber-TTL]
      │
      ▼
 [Processing Layer] → hitung indikator turunan (tren, skor, ranking)
