@@ -40,6 +40,53 @@ Cek endpoint health di `http://localhost:8000/health` dan ringkasan bank di `htt
 
 Jika tidak dapat diakses, pastikan firewall Windows mengizinkan koneksi Python/Uvicorn pada jaringan privat.
 
+## Endpoint
+
+| Endpoint | Keterangan |
+|---|---|
+| `GET /health` | Cek backend hidup |
+| `GET /api/banks/summary` | Harga terakhir, market cap, perubahan harian 4 bank |
+| `GET /api/banks/{symbol}/history?start=&end=` | OHLC harian per emiten |
+| `GET /api/banks/ranking` | Peringkat harian sederhana berdasarkan perubahan harga |
+| `GET /api/banks/intelligence` | Skor komposit 0–100, MA7/MA30, tren, volatilitas, sinyal & riwayat anomali |
+
+## Skor komposit dan sinyal anomali
+
+`/api/banks/intelligence` menghitung turunan dari data Sectors, bukan menampilkan
+data mentah:
+
+- **Skor 0–100** yang bersifat *relatif* antar empat bank. Tiap komponen diubah
+  jadi z-score terhadap rata-rata keempat bank, lalu digabung dengan bobot:
+  momentum 30% (perubahan harian), tren 30% (return sepanjang jendela),
+  stabilitas 20% (volatilitas dibalik), dan posisi MA 20% (harga terhadap MA7
+  dan MA30).
+- **Label skor** memakai kata perbandingan, bukan penilaian mutlak: 65+ "Jauh di
+  atas rata-rata", 55+ "Di atas rata-rata", 45+ "Sekitar rata-rata", sisanya
+  "Di bawah rata-rata". Bank bisa berlabel di atas rata-rata walau harganya
+  sedang turun, bila ketiga pesaingnya turun lebih dalam.
+- **Sinyal anomali** dari z-score perubahan harga harian terakhir terhadap
+  sebaran 30 hari bursa sebelumnya. `|z| >= 2` ditandai sebagai lonjakan tidak
+  wajar.
+- **Riwayat anomali** (`anomaly_history`) menelusuri seluruh jendela analisis,
+  bukan hanya hari terakhir, lalu mengembalikan maksimal 5 temuan terbaru
+  (tanggal, z-score, arah, besaran perubahan).
+- **Lonjakan volume** bila volume terakhir mencapai dua kali rata-rata jendela.
+
+### Kenapa z-score, bukan min–max
+
+Normalisasi min–max selalu memberi 100 kepada bank terbaik dan 0 kepada yang
+terburuk, walau selisih aslinya sangat tipis. Akibatnya komponen "posisi MA"
+bisa tampak 100 padahal harga bank itu justru berada di bawah MA-nya. Dengan
+z-score, skor 50 berarti persis rata-rata peer. Untuk empat bank, `|z|`
+maksimum yang mungkin adalah `akar(n - 1) = 1,73`, sehingga skor komponen
+mentok di kisaran 6,7–93,3 dan penjepitan 0/100 praktis tidak pernah aktif.
+
+Jendela analisis 70 hari kalender; kalau hari bursa yang tersedia kurang dari 30
+(misalnya karena libur panjang), jendela otomatis dilebarkan sampai tiga kali lipat.
+
 ## Cache
 
-Response summary, histori (per simbol dan rentang tanggal), serta ranking disimpan dalam memori selama 5 menit. Cache hilang saat proses backend dimulai ulang.
+Ringkasan, ranking, dan skor disimpan dalam memori selama 5 menit. Histori OHLC
+disimpan 1 jam karena data harian hanya berubah sekali per hari bursa — ini menghemat
+kredit Sectors saat pengguna membuka-tutup layar. Cache hilang saat proses backend
+dimulai ulang.
