@@ -54,7 +54,6 @@ Sistem intelijen pasar yang **mengumpulkan data resmi pasar saham Indonesia** (l
 
 ## Dokumen Pendukung Lain
 - `PRD_FinTrack_Intelligence.md` — spesifikasi produk detail
-- `langkahPengerjann.md` — langkah pengerjaan bernomor, checklist eksekusi untuk AI agent
 - `SECTORS_HACKATHON_RULES.md` — aturan resmi lengkap
 - `SUBMISSION_GUIDE.md` — checklist submission dan problem statement
 - `NASKAH_VIDEO_DAN_POST_FinTrack.md` — naskah video teaser & judging, plus caption media sosial
