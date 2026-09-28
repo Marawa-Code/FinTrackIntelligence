@@ -220,4 +220,151 @@ check("sinyal menyebut anomali", sinyal, predicate=lambda items: any("tidak waja
 check("sinyal menyebut posisi MA", sinyal, predicate=lambda items: any("atas MA30" in i for i in items))
 check("sinyal menyebut jumlah hari bursa", sinyal, predicate=lambda items: any("50 hari bursa" in i for i in items))
 
+
+# --- pembacaan field yang bisa muncul di beberapa bagian respons ---
+check("_first_present memakai nilai pertama", m._first_present(None, 5, 7), 5)
+check("_first_present kosong semua -> None", m._first_present(None, None), None)
+check(
+    "nol tidak dianggap kosong",
+    m._first_present(0.0, 5.0),
+    0.0,
+)
+
+
+# --- batas ukuran cache ---
+# Kunci histori memuat rentang tanggal, jadi tiap rentang baru menambah entri
+# yang tidak akan pernah dibaca lagi. Tanpa batas, cache tumbuh terus.
+m._cache.clear()
+for index in range(m._MAX_CACHE_ENTRIES):
+    m._set_cached(f"kunci-{index}", [index], ttl_seconds=3600)
+check("cache terisi sampai batas", len(m._cache), m._MAX_CACHE_ENTRIES)
+
+m._set_cached("kunci-baru", ["baru"], ttl_seconds=3600)
+check("cache tidak melewati batas", len(m._cache) <= m._MAX_CACHE_ENTRIES, True)
+check("kunci terbaru tetap tersimpan", m._get_cached("kunci-baru"), ["baru"])
+check("kunci tertua dibuang lebih dulu", m._get_cached("kunci-0"), None)
+
+m._cache.clear()
+for index in range(m._MAX_CACHE_ENTRIES):
+    m._set_cached(f"kedaluwarsa-{index}", [index], ttl_seconds=0)
+m._set_cached("kunci-baru", ["baru"], ttl_seconds=3600)
+check("entri kedaluwarsa dibuang lebih dulu", len(m._cache), 1)
+m._cache.clear()
+
+
+# --- respons Sectors dipalsukan di bawah ini supaya kredit API tidak terpakai ---
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+LAPORAN_NULL = {
+    "company_name": "Bank Uji",
+    # null eksplisit, bukan kunci yang hilang: inilah bentuk yang dulu membuat
+    # cadangan .get(kunci, cadangan) tidak pernah jalan.
+    "overview": {"last_close_price": None, "market_cap": None},
+    "valuation": {"last_close_price": 5000.0, "daily_close_change": 0.0125},
+}
+
+_get_asli = m.requests.get
+m._cache.clear()
+try:
+    m.requests.get = lambda *args, **kwargs: _FakeResponse(LAPORAN_NULL)
+    ringkas = m.get_banks_summary()
+finally:
+    m.requests.get = _get_asli
+    m._cache.clear()
+
+check("null di overview jatuh ke valuation", ringkas[0]["last_close_price"], 5000.0)
+check("market_cap juga punya cadangan", ringkas[0]["market_cap"], None)
+check("perubahan harian terbaca", ringkas[0]["daily_close_change"], 0.0125)
+
+m._cache.clear()
+try:
+    def _get_dengan_satu_gagal(url, *args, **kwargs):
+        if "BBRI" in url:
+            raise m.requests.RequestException("jaringan putus")
+        return _FakeResponse(LAPORAN_NULL)
+
+    m.requests.get = _get_dengan_satu_gagal
+    sebagian = m.get_banks_summary()
+    check("satu simbol gagal tidak mengosongkan sisanya", len(sebagian), 3)
+    check(
+        "simbol yang gagal tidak ikut terkirim",
+        [bank["symbol"] for bank in sebagian],
+        ["BBCA", "BMRI", "BBNI"],
+    )
+    check("hasil sebagian tidak di-cache", m._get_cached("banks:summary"), None)
+finally:
+    m.requests.get = _get_asli
+    m._cache.clear()
+
+
+# --- intelligence saat salah satu bank gagal ---
+# Perubahan paling berisiko: loop dulu berhenti pada kegagalan pertama dan
+# mengosongkan seluruh layar ranking. Di bawah ini _fetch_history dan
+# get_banks_summary diganti versi palsu, jadi Sectors tetap tidak dipanggil.
+def _riwayat_palsu(hari=45):
+    return [
+        {
+            "date": f"2026-{(index // 28) + 1:02d}-{(index % 28) + 1:02d}",
+            "close": 1000.0 + index,
+            "volume": 1000.0,
+        }
+        for index in range(hari)
+    ]
+
+
+RINGKASAN_PALSU = [
+    {
+        "symbol": symbol,
+        "company_name": f"Bank {symbol}",
+        "last_close_price": 1000.0,
+        "market_cap": 1.0,
+        "daily_close_change": 0.01,
+    }
+    for symbol in m.BANK_SYMBOLS
+]
+
+_ringkas_asli = m.get_banks_summary
+_fetch_asli = m._fetch_history
+
+
+def _fetch_dengan_satu_gagal(symbol, start, end):
+    if symbol == "BMRI":
+        raise m.HTTPException(status_code=502, detail="gagal diambil")
+    return _riwayat_palsu()
+
+
+m._cache.clear()
+try:
+    m.get_banks_summary = lambda: RINGKASAN_PALSU
+    m._fetch_history = _fetch_dengan_satu_gagal
+
+    hasil = m.get_banks_intelligence()
+    check("satu bank gagal -> sisanya tetap dinilai", len(hasil), 3)
+    check("peringkat tetap berurutan tanpa bolong", [bank["rank"] for bank in hasil], [1, 2, 3])
+    check(
+        "bank yang gagal tidak ikut dinilai",
+        sorted(bank["symbol"] for bank in hasil),
+        ["BBCA", "BBNI", "BBRI"],
+    )
+    check("hasil sebagian tidak di-cache", m._get_cached("banks:intelligence"), None)
+    check("nilai mentah momentum ikut dikirim", hasil[0]["momentum"], 0.01)
+    check(
+        "peer menyusut jadi tiga, skor tetap relatif",
+        [bank["score"] for bank in hasil],
+        predicate=lambda nilai: all(0 <= skor <= 100 for skor in nilai),
+    )
+finally:
+    m.get_banks_summary = _ringkas_asli
+    m._fetch_history = _fetch_asli
+    m._cache.clear()
+
 print("\nSemua uji lulus.")

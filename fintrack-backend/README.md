@@ -81,8 +81,9 @@ z-score, skor 50 berarti persis rata-rata peer. Untuk empat bank, `|z|`
 maksimum yang mungkin adalah `akar(n - 1) = 1,73`, sehingga skor komponen
 mentok di kisaran 6,7–93,3 dan penjepitan 0/100 praktis tidak pernah aktif.
 
-Jendela analisis 70 hari kalender; kalau hari bursa yang tersedia kurang dari 30
-(misalnya karena libur panjang), jendela otomatis dilebarkan sampai tiga kali lipat.
+Jendela analisis 70 hari kalender; kalau hari bursa yang tersedia kurang dari 32
+(deteksi anomali butuh 30 hari baseline plus dua harga penutup, misalnya karena
+libur panjang), jendela otomatis dilebarkan sampai tiga kali lipat.
 
 ## Cache
 
@@ -90,3 +91,22 @@ Ringkasan, ranking, dan skor disimpan dalam memori selama 5 menit. Histori OHLC
 disimpan 1 jam karena data harian hanya berubah sekali per hari bursa — ini menghemat
 kredit Sectors saat pengguna membuka-tutup layar. Cache hilang saat proses backend
 dimulai ulang.
+
+Kunci cache histori memuat rentang tanggal, jadi tiap rentang baru menghasilkan
+kunci baru yang tidak akan pernah dibaca lagi. Cache dibatasi 256 entri dan
+membersihkan entri kedaluwarsa lebih dulu saat penuh, supaya tidak tumbuh terus
+selama server hidup.
+
+## Bila sebagian bank gagal diambil
+
+Keempat bank diambil satu per satu. Kalau salah satunya gagal (rate limit,
+jaringan, atau data kosong), bank itu dilewati dan sisanya tetap dikirim — layar
+ranking tidak ikut kosong hanya karena satu emiten bermasalah.
+
+Hasil yang tidak lengkap sengaja **tidak** di-cache, supaya permintaan
+berikutnya masih mencoba melengkapi, bukan menyajikan daftar bolong selama lima
+menit. Skor tetap relatif: bila hanya tiga bank yang berhasil diambil, ketiganya
+dibandingkan satu sama lain.
+
+Kalau seluruh bank gagal, endpoint mengembalikan `502` — jadi aplikasi
+menampilkan pesan koneksi, bukan layar kosong yang membingungkan.

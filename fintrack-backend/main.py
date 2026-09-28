@@ -43,6 +43,12 @@ VOLUME_SPIKE_RATIO = 2.0
 # sebuah hari, dan berapa banyak temuan anomali yang dikirim ke aplikasi.
 ANOMALY_LOOKBACK_DAYS = 30
 ANOMALY_HISTORY_LIMIT = 5
+# Deteksi anomali butuh ANOMALY_LOOKBACK_DAYS return sebagai baseline ditambah
+# satu hari yang dinilai, jadi minimal ANOMALY_LOOKBACK_DAYS + 2 harga close.
+# Ambang inilah yang mengikat saat jendela dianalisis, bukan
+# MIN_CLOSES_FOR_SCORE: tanpa ini, jendela berhenti melebar di 31 close padahal
+# anomali masih menyerah dengan alasan "data historis belum cukup".
+MIN_CLOSES_FOR_ANOMALY = ANOMALY_LOOKBACK_DAYS + 2
 # Satu simpangan baku antar peer bernilai 25 poin pada skala 0-100, sehingga
 # skor 50 berarti persis rata-rata keempat bank.
 PEER_SCORE_SIGMA = 25.0
@@ -59,6 +65,12 @@ SCORE_WEIGHTS = {
 
 _cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
 _cache_lock = Lock()
+
+# Kunci cache histori memuat rentang tanggal, jadi tiap rentang baru yang
+# diminta aplikasi menghasilkan kunci baru yang tidak akan pernah dibaca lagi.
+# Tanpa batas, cache tumbuh terus selama proses hidup. Batas ini jauh di atas
+# kebutuhan demo, jadi normalnya tidak pernah tersentuh.
+_MAX_CACHE_ENTRIES = 256
 
 
 def _get_cached(key: str) -> list[dict[str, object]] | None:
@@ -79,12 +91,39 @@ def _set_cached(
     key: str, value: list[dict[str, object]], ttl_seconds: int = CACHE_TTL_SECONDS
 ) -> None:
     with _cache_lock:
+        if len(_cache) >= _MAX_CACHE_ENTRIES:
+            now = monotonic()
+            for stale in [
+                k for k, (expires_at, _) in _cache.items() if expires_at <= now
+            ]:
+                del _cache[stale]
+
+            # Kalau masih penuh, buang yang paling lama disimpan. Dict menjaga
+            # urutan penyisipan, jadi kunci paling awal adalah yang paling tua.
+            while len(_cache) >= _MAX_CACHE_ENTRIES:
+                del _cache[next(iter(_cache))]
+
         _cache[key] = (monotonic() + ttl_seconds, value)
 
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def _first_present(*values: object) -> object:
+    """Nilai pertama yang bukan None, atau None bila semuanya kosong.
+
+    Dipakai untuk field yang bisa muncul di lebih dari satu bagian respons
+    Sectors. `dict.get(kunci, cadangan)` tidak cukup untuk itu: argumen
+    cadangan hanya dipakai kalau kuncinya tidak ada sama sekali, sedangkan
+    Sectors juga bisa mengirim kuncinya dengan nilai null. Akibatnya harga
+    tampil kosong walaupun nilainya tersedia di bagian lain.
+    """
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 @app.get("/api/banks/summary")
@@ -101,6 +140,7 @@ def get_banks_summary() -> list[dict[str, object]]:
 
     headers = {"Authorization": SECTORS_API_KEY}
     summaries = []
+    failed: list[str] = []
 
     for symbol in BANK_SYMBOLS:
         url = f"{SECTORS_API_BASE_URL}/company/report/{symbol}/"
@@ -113,16 +153,13 @@ def get_banks_summary() -> list[dict[str, object]]:
             )
             response.raise_for_status()
             report = response.json()
-        except requests.RequestException as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Gagal mengambil data Sectors untuk {symbol}.",
-            ) from exc
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Sectors mengembalikan JSON tidak valid untuk {symbol}.",
-            ) from exc
+        except (requests.RequestException, ValueError) as exc:
+            # Satu simbol gagal tidak boleh mengosongkan seluruh dashboard.
+            # Simbol yang berhasil tetap dikirim, dan hasilnya sengaja tidak
+            # di-cache supaya percobaan berikutnya bisa melengkapi yang bolong.
+            print(f"[FinTrack] Gagal mengambil ringkasan {symbol}: {exc}")
+            failed.append(symbol)
+            continue
 
         overview = report.get("overview") or {}
         valuation = report.get("valuation") or {}
@@ -130,15 +167,30 @@ def get_banks_summary() -> list[dict[str, object]]:
             {
                 "symbol": symbol,
                 "company_name": report.get("company_name"),
-                "last_close_price": overview.get(
-                    "last_close_price", valuation.get("last_close_price")
+                "last_close_price": _first_present(
+                    overview.get("last_close_price"), valuation.get("last_close_price")
                 ),
-                "market_cap": overview.get("market_cap"),
-                "daily_close_change": valuation.get("daily_close_change"),
+                "market_cap": _first_present(
+                    overview.get("market_cap"), valuation.get("market_cap")
+                ),
+                # Perubahan harian dilaporkan di bagian valuation, tapi urutan
+                # cadangannya dibalik terhadap dua field di atas supaya tidak
+                # bergantung pada asumsi soal bagian mana yang benar.
+                "daily_close_change": _first_present(
+                    valuation.get("daily_close_change"), overview.get("daily_close_change")
+                ),
             }
         )
 
-    _set_cached("banks:summary", summaries)
+    if not summaries:
+        raise HTTPException(
+            status_code=502,
+            detail="Gagal mengambil data Sectors untuk seluruh bank.",
+        )
+
+    if not failed:
+        _set_cached("banks:summary", summaries)
+
     return summaries
 
 
@@ -235,7 +287,12 @@ def get_banks_ranking() -> list[dict[str, object]]:
         }
         for rank, bank in enumerate(ordered, start=1)
     ]
-    _set_cached("banks:ranking", ranking)
+    # Sama seperti intelligence: ranking yang tidak lengkap tidak di-cache,
+    # supaya bank yang sempat gagal diambil tetap dicoba lagi pada permintaan
+    # berikutnya dan tidak absen selama lima menit.
+    if len(ranking) == len(BANK_SYMBOLS):
+        _set_cached("banks:ranking", ranking)
+
     return ranking
 
 
@@ -432,7 +489,9 @@ def _load_market_window(
 
     Jendela 70 hari kalender biasanya menyisakan lebih dari 30 hari bursa,
     tapi periode libur panjang bisa membuatnya kurang dari itu. Bila terjadi,
-    jendela dilebarkan sampai tiga kali lipat sebelum menyerah.
+    jendela dilebarkan sampai tiga kali lipat sebelum menyerah. Ambang
+    berhentinya memakai MIN_CLOSES_FOR_ANOMALY supaya jendela tidak berhenti
+    di titik di mana deteksi anomali masih menganggap datanya kurang.
     """
     closes: list[float] = []
     volumes: list[float] = []
@@ -443,7 +502,7 @@ def _load_market_window(
         closes = _numeric_series(history, "close")
         volumes = _numeric_series(history, "volume")
         returns_with_dates = _returns_with_dates(history)
-        if len(closes) > MIN_CLOSES_FOR_SCORE:
+        if len(closes) >= MIN_CLOSES_FOR_ANOMALY:
             break
 
     return closes, volumes, returns_with_dates
@@ -529,8 +588,18 @@ def get_banks_intelligence() -> list[dict[str, object]]:
     volume_spikes: dict[str, dict[str, object]] = {}
     anomaly_histories: dict[str, list[dict[str, object]]] = {}
 
+    analysed: list[str] = []
     for symbol in BANK_SYMBOLS:
-        closes, volumes, dated_returns = _load_market_window(symbol, end)
+        try:
+            closes, volumes, dated_returns = _load_market_window(symbol, end)
+        except HTTPException as exc:
+            # Satu simbol yang gagal (rate limit, jaringan, data kosong) tidak
+            # boleh mengosongkan seluruh layar ranking. Bank yang datanya utuh
+            # tetap dihitung; peer-nya ikut menyusut dan skor tetap relatif
+            # terhadap bank yang tersisa.
+            print(f"[FinTrack] Gagal menganalisis {symbol}: {exc.detail}")
+            continue
+
         returns = _daily_returns(closes)
 
         ma7 = _moving_average(closes, 7)
@@ -567,14 +636,21 @@ def get_banks_intelligence() -> list[dict[str, object]]:
         anomalies[symbol] = _detect_price_anomaly(returns)
         volume_spikes[symbol] = _detect_volume_spike(volumes)
         anomaly_histories[symbol] = _find_anomaly_history(dated_returns)
+        analysed.append(symbol)
+
+    if not analysed:
+        raise HTTPException(
+            status_code=502,
+            detail="Gagal mengambil data historis untuk seluruh bank.",
+        )
 
     # Momentum dan tren: makin besar makin baik.
     # Stabilitas: volatilitas dibalik supaya makin tenang makin tinggi.
     momentum_score = _peer_score(
-        {symbol: metrics[symbol]["momentum"] for symbol in BANK_SYMBOLS}
+        {symbol: metrics[symbol]["momentum"] for symbol in analysed}
     )
     trend_score = _peer_score(
-        {symbol: metrics[symbol]["trend"] for symbol in BANK_SYMBOLS}
+        {symbol: metrics[symbol]["trend"] for symbol in analysed}
     )
     stability_score = _peer_score(
         {
@@ -583,15 +659,15 @@ def get_banks_intelligence() -> list[dict[str, object]]:
                 if metrics[symbol]["volatility"] is None
                 else -metrics[symbol]["volatility"]
             )
-            for symbol in BANK_SYMBOLS
+            for symbol in analysed
         }
     )
     ma_score = _peer_score(
-        {symbol: metrics[symbol]["ma_position"] for symbol in BANK_SYMBOLS}
+        {symbol: metrics[symbol]["ma_position"] for symbol in analysed}
     )
 
     results = []
-    for symbol in BANK_SYMBOLS:
+    for symbol in analysed:
         summary = summaries.get(symbol) or {}
         components = {
             "momentum": momentum_score[symbol],
@@ -643,6 +719,16 @@ def get_banks_intelligence() -> list[dict[str, object]]:
                     if metrics[symbol]["ma_position"] is None
                     else round(metrics[symbol]["ma_position"], 4)  # type: ignore[arg-type]
                 ),
+                # Nilai mentah yang benar-benar dipakai menghitung skor
+                # momentum. Bisa berbeda dari daily_close_change: kalau field
+                # itu kosong, momentum jatuh ke return hari terakhir. Aplikasi
+                # menampilkan angka ini, bukan daily_close_change, supaya label
+                # mentahnya tidak pernah berbeda dari yang mendasari skor.
+                "momentum": (
+                    None
+                    if metrics[symbol]["momentum"] is None
+                    else round(metrics[symbol]["momentum"], 4)  # type: ignore[arg-type]
+                ),
                 "trend": (
                     None
                     if metrics[symbol]["trend"] is None
@@ -673,5 +759,10 @@ def get_banks_intelligence() -> list[dict[str, object]]:
         {"rank": rank, **bank} for rank, bank in enumerate(ordered, start=1)
     ]
 
-    _set_cached("banks:intelligence", intelligence)
+    # Hasil sebagian tidak di-cache: kalau satu bank gagal karena rate limit
+    # atau jaringan, percobaan berikutnya harus tetap mencoba melengkapinya
+    # alih-alih menyajikan daftar bolong selama lima menit ke depan.
+    if len(analysed) == len(BANK_SYMBOLS):
+        _set_cached("banks:intelligence", intelligence)
+
     return intelligence
