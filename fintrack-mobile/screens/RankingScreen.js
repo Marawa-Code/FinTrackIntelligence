@@ -150,7 +150,11 @@ export default function RankingScreen() {
 
               {signals.length > 0 ? (
                 <View style={styles.signalList}>
-                  {signals.slice(0, 3).map((signal) => (
+                  {/* Semua sinyal ditampilkan, tanpa dipotong. Backend mengirim
+                      paling banyak empat (anomali, volume, MA30, tren) dan
+                      memotongnya di sini dulu membuang sinyal tren tepat saat
+                      anomali dan lonjakan volume muncul bersamaan. */}
+                  {signals.map((signal) => (
                     <Text key={signal} style={styles.signal}>
                       • {signal}
                     </Text>
@@ -164,8 +168,8 @@ export default function RankingScreen() {
               </Text>
 
               <Text style={styles.componentLine}>
-                Momentum {formatScore(components.momentum)} ({formatPercent(bank.daily_close_change)}) ·
-                Tren {formatScore(components.trend)} ({formatPercent(bank.trend)})
+                Momentum {formatScore(components.momentum)} ({formatPercent(bank.momentum)}) · Tren{' '}
+                {formatScore(components.trend)} ({formatPercent(bank.trend)})
               </Text>
 
               <Text style={styles.componentLine}>
@@ -178,7 +182,7 @@ export default function RankingScreen() {
               {riwayat.length > 0 ? (
                 <View style={styles.history}>
                   <Text style={styles.historyTitle}>
-                    Anomali terdeteksi ({bank.sessions ?? '—'} hari bursa)
+                    Anomali terdeteksi di jendela {bank.sessions ?? '—'} hari bursa
                   </Text>
                   {riwayat.map((item) => (
                     <View key={`${item.date}-${item.z_score}`} style={styles.historyRow}>
@@ -191,7 +195,7 @@ export default function RankingScreen() {
                 </View>
               ) : (
                 <Text style={styles.historyEmpty}>
-                  Tidak ada lonjakan tidak wajar dalam {bank.sessions ?? '—'} hari bursa terakhir
+                  Tidak ada lonjakan tidak wajar di jendela {bank.sessions ?? '—'} hari bursa
                 </Text>
               )}
             </View>

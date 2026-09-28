@@ -26,5 +26,10 @@ export function scoreTone(score) {
 /** Warna untuk persentase perubahan: hijau saat naik, merah saat turun. */
 export function changeTone(value) {
   if (value == null || Number.isNaN(Number(value))) return NEUTRAL_COLOR;
-  return Number(value) >= 0 ? UP_COLOR : DOWN_COLOR;
+  const number = Number(value);
+  // Harga yang tidak bergerak bukan kenaikan. Tanpa cabang ini, "0,00%"
+  // diwarnai hijau dan terbaca sebagai kabar baik.
+  if (number > 0) return UP_COLOR;
+  if (number < 0) return DOWN_COLOR;
+  return NEUTRAL_COLOR;
 }

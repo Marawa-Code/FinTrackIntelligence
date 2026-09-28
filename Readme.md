@@ -1,6 +1,6 @@
 # FinTrack Intelligence
 
-Dashboard intelijen pasar lokal untuk membandingkan empat emiten perbankan IDX: BBCA, BBRI, BMRI, dan BBNI. Aplikasi mengambil data Sectors API melalui backend FastAPI, lalu menampilkan harga terakhir, perubahan harian, histori 30 hari, dan ranking.
+Dashboard intelijen pasar lokal untuk membandingkan empat emiten perbankan IDX: BBCA, BBRI, BMRI, dan BBNI. Aplikasi mengambil data Sectors API melalui backend FastAPI, lalu menampilkan harga terakhir, perubahan harian, histori 30 hari bursa, dan ranking.
 
 ## Struktur
 

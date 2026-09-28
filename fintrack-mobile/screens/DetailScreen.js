@@ -30,7 +30,11 @@ export default function DetailScreen({ route }) {
       setError('');
       const end = new Date();
       const start = new Date(end);
-      start.setDate(start.getDate() - 29);
+      // Grafiknya menjanjikan 30 hari bursa, bukan 30 hari kalender. Rentang
+      // kalender dilebarkan lebih dulu (30 hari bursa butuh sekitar 42 hari
+      // kalender, 49 dipakai untuk margin libur panjang), lalu daftarnya
+      // dipotong 30 titik terakhir setelah tersortir.
+      start.setDate(start.getDate() - 48);
       const toDateParam = (value) =>
         `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(
           value.getDate(),
@@ -54,7 +58,8 @@ export default function DetailScreen({ route }) {
               .map((item) => ({
                 date: String(item.date).slice(5, 10),
                 close: Number(item.close),
-              })),
+              }))
+              .slice(-30),
           );
         }
       } catch (error) {
@@ -73,7 +78,7 @@ export default function DetailScreen({ route }) {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.eyebrow}>HISTORI 30 HARI</Text>
+      <Text style={styles.eyebrow}>HISTORI 30 HARI BURSA</Text>
       <Text style={styles.title}>{symbol}</Text>
       <Text style={styles.subtitle}>Pergerakan harga penutupan harian</Text>
 
