@@ -114,6 +114,39 @@ check(
     [],
 )
 
+# --- hari terakhir harus dapat z-score yang sama di kolom `anomaly` dan di
+# --- entri pertama `anomaly_history`, karena aplikasi menampilkan keduanya
+# --- berdampingan. Dulu keduanya memakai baseline berbeda.
+volatil = [(f"v-{i:02d}", 0.03 if i % 2 == 0 else -0.03) for i in range(30)]
+tenang = [(f"t-{i:02d}", 0.001 if i % 2 == 0 else -0.001) for i in range(30)]
+deret = volatil + tenang + [("hari-terakhir", 0.02)]
+
+kini = m._detect_price_anomaly([nilai for _, nilai in deret])
+riwayat = m._find_anomaly_history(deret)
+
+check("riwayat anomali terisi", len(riwayat) > 0, True)
+check("hari terakhir ditandai anomali", kini["is_anomaly"], True)
+check(
+    "z-score hari terakhir sama di kedua tempat",
+    riwayat[0]["z_score"],
+    kini["z_score"],
+)
+check(
+    "arah hari terakhir sama di kedua tempat",
+    riwayat[0]["direction"],
+    kini["direction"],
+)
+check(
+    "baseline 30 hari, bukan seluruh jendela",
+    kini["z_score"],
+    predicate=lambda nilai: nilai > 10,
+)
+check(
+    "z-score hari terakhir sama dengan hitungan langsung",
+    kini["z_score"],
+    round(m._anomaly_z_score([nilai for _, nilai in deret], len(deret) - 1), 2),
+)
+
 # --- pasangan tanggal & return ---
 dengan_lubang = [
     {"date": "2026-01-01", "close": 100.0},

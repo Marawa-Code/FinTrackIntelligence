@@ -1,0 +1,6 @@
+# Konfigurasi Claude Code yang bersifat pribadi: izin tool dan preferensi lokal.
+# settings.json sengaja tidak diabaikan supaya bisa di-commit kalau ingin dibagi.
+.claude/settings.local.json
+
+# macOS
+.DS_Store

@@ -1,4 +1,7 @@
-fastapi
-uvicorn
-requests
-python-dotenv
+# Versi dipatok ke yang benar-benar terpasang di .venv saat demo disiapkan.
+# Tanpa pin, juri yang memasang ulang bisa mendapat FastAPI/uvicorn versi lain
+# dan perilakunya ikut berubah.
+fastapi==0.141.1
+uvicorn==0.54.0
+requests==2.34.2
+python-dotenv==1.2.3

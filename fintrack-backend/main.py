@@ -6,10 +6,24 @@ from time import monotonic
 
 import requests
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
-from config import SECTORS_API_KEY
+from config import CORS_ALLOWED_ORIGINS, SECTORS_API_KEY
 
 app = FastAPI(title="FinTrack Intelligence API")
+
+# Aplikasi mobile tidak butuh CORS — React Native bukan browser. Tapi demo
+# lewat `expo start --web` berjalan di browser dan seluruh fetch-nya akan
+# diblokir tanpa middleware ini. Backend hanya menyajikan data pasar publik,
+# tanpa cookie maupun kredensial, jadi origin dibuka lebar secara sadar
+# (allow_credentials dibiarkan False, syarat wajib bila origin "*").
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
 SECTORS_API_BASE_URL = "https://api.sectors.app/v2"
 BANK_SYMBOLS = ("BBCA", "BBRI", "BMRI", "BBNI")
 
@@ -174,6 +188,11 @@ def _fetch_history(symbol: str, start: date, end: date) -> list[dict[str, object
         for record in records
         if isinstance(record, dict)
     ]
+    # Urutan dari Sectors tidak dijamin menaik, sedangkan MA, tren, dan return
+    # di bawah semuanya mengasumsikan data terbaru ada di paling akhir. Kalau
+    # asumsi itu meleset, MA7 diam-diam dihitung dari hari terlama dan tren
+    # jadi terbalik tanpa satu pun error. Diurutkan sekali di sini.
+    history.sort(key=lambda record: str(record.get("date") or ""))
     _set_cached(cache_key, history, HISTORY_CACHE_TTL_SECONDS)
     return history
 
@@ -274,6 +293,26 @@ def _returns_with_dates(
     return pairs
 
 
+def _anomaly_z_score(returns: list[float], index: int) -> float | None:
+    """Z-score return pada `index` terhadap ANOMALY_LOOKBACK_DAYS hari sebelumnya.
+
+    Satu-satunya tempat z-score anomali dihitung. Sebelumnya deteksi hari
+    terakhir memakai seluruh jendela sebagai baseline sementara penelusuran
+    riwayat memakai 30 hari, sehingga satu tanggal yang sama bisa tampil dengan
+    dua z-score berbeda di layar. Mengembalikan None bila baseline belum cukup
+    atau volatilitasnya nol.
+    """
+    if index < ANOMALY_LOOKBACK_DAYS:
+        return None
+
+    baseline = returns[index - ANOMALY_LOOKBACK_DAYS : index]
+    sigma = statistics.pstdev(baseline)
+    if sigma == 0:
+        return None
+
+    return (returns[index] - statistics.fmean(baseline)) / sigma
+
+
 def _find_anomaly_history(
     returns_with_dates: list[tuple[str, float]],
 ) -> list[dict[str, object]]:
@@ -284,16 +323,14 @@ def _find_anomaly_history(
     lalu tetap terdeteksi dan bisa ditampilkan di aplikasi.
     """
     found: list[dict[str, object]] = []
+    returns = [value for _, value in returns_with_dates]
 
     for index in range(ANOMALY_LOOKBACK_DAYS, len(returns_with_dates)):
-        window = returns_with_dates[index - ANOMALY_LOOKBACK_DAYS : index]
-        baseline = [value for _, value in window]
-        sigma = statistics.pstdev(baseline)
-        if sigma == 0:
+        z_score = _anomaly_z_score(returns, index)
+        if z_score is None:
             continue
 
         date_value, current = returns_with_dates[index]
-        z_score = (current - statistics.fmean(baseline)) / sigma
         if abs(z_score) >= ANOMALY_Z_THRESHOLD:
             found.append(
                 {
@@ -344,10 +381,13 @@ def _peer_score(raw: dict[str, float | None]) -> dict[str, float | None]:
 def _detect_price_anomaly(returns: list[float]) -> dict[str, object]:
     """Deteksi lonjakan harga tidak wajar lewat z-score perubahan harian.
 
-    Perubahan terakhir dibandingkan dengan sebaran perubahan sebelumnya pada
-    jendela analisis. Ambang |z| >= 2 dipakai sebagai penanda anomali.
+    Perubahan terakhir dibandingkan dengan sebaran ANOMALY_LOOKBACK_DAYS hari
+    sebelumnya — baseline yang sama dengan _find_anomaly_history, supaya hari
+    terakhir tidak pernah dapat z-score berbeda antara kolom `anomaly` dan
+    entri pertama `anomaly_history` yang ditampilkan berdampingan. Ambang
+    |z| >= 2 dipakai sebagai penanda anomali.
     """
-    if len(returns) < MIN_CLOSES_FOR_SCORE:
+    if len(returns) <= ANOMALY_LOOKBACK_DAYS:
         return {
             "is_anomaly": False,
             "z_score": None,
@@ -355,9 +395,8 @@ def _detect_price_anomaly(returns: list[float]) -> dict[str, object]:
             "reason": "data historis belum cukup",
         }
 
-    latest, baseline = returns[-1], returns[:-1]
-    sigma = statistics.pstdev(baseline)
-    if sigma == 0:
+    z_score = _anomaly_z_score(returns, len(returns) - 1)
+    if z_score is None:
         return {
             "is_anomaly": False,
             "z_score": 0.0,
@@ -365,11 +404,10 @@ def _detect_price_anomaly(returns: list[float]) -> dict[str, object]:
             "reason": "volatilitas nol",
         }
 
-    z_score = (latest - statistics.fmean(baseline)) / sigma
     return {
         "is_anomaly": abs(z_score) >= ANOMALY_Z_THRESHOLD,
         "z_score": round(z_score, 2),
-        "direction": "naik" if latest >= 0 else "turun",
+        "direction": "naik" if returns[-1] >= 0 else "turun",
         "threshold": ANOMALY_Z_THRESHOLD,
     }
 
@@ -436,9 +474,13 @@ def _build_signals(
     signals = []
 
     if anomaly.get("is_anomaly"):
+        # Arah harga dan arah penyimpangan itu dua hal berbeda: di pasar yang
+        # naik pelan, harga bisa tetap naik sementara z-score-nya negatif
+        # karena kenaikannya jauh di bawah kebiasaan. Menyebutnya "lonjakan
+        # naik" akan menyesatkan, jadi keduanya dinyatakan terpisah.
         signals.append(
-            f"Lonjakan {anomaly.get('direction')} tidak wajar "
-            f"(z-score {anomaly.get('z_score')})"
+            f"Pergerakan tidak wajar (z-score {anomaly.get('z_score')}), "
+            f"harga {anomaly.get('direction')}"
         )
 
     if volume_spike.get("is_spike"):
