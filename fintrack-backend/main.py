@@ -176,6 +176,12 @@ def get_banks_summary() -> list[dict[str, object]]:
                 # Perubahan harian dilaporkan di bagian valuation, tapi urutan
                 # cadangannya dibalik terhadap dua field di atas supaya tidak
                 # bergantung pada asumsi soal bagian mana yang benar.
+                #
+                # Satuannya pecahan, bukan persen: 0,004016 berarti naik 0,40%.
+                # Sudah diverifikasi terhadap harga penutup pada data Sectors
+                # yang sebenarnya, jadi JANGAN dikali 100 di sini. Kalau suatu
+                # saat Sectors mengubah satuannya, gejalanya adalah angka di
+                # aplikasi meleset 100 kali lipat.
                 "daily_close_change": _first_present(
                     valuation.get("daily_close_change"), overview.get("daily_close_change")
                 ),

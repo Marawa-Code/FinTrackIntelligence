@@ -37,7 +37,10 @@ for bank in hasil:
     if nilai is None:
         print(f"{bank['symbol']:<5} None  -> FIELD TIDAK DITEMUKAN. Cek section valuation/overview.")
     elif abs(nilai) < 1:
-        print(f"{bank['symbol']:<5} {nilai!r:<10} -> pecahan, BENAR (0.0124 = 1,24%)")
+        print(
+            f"{bank['symbol']:<5} {nilai!r:<10} -> pecahan, BENAR "
+            f"({nilai:.4f} = {nilai * 100:.2f}%)"
+        )
     else:
         print(f"{bank['symbol']:<5} {nilai!r:<10} -> PERSEN. Aplikasi akan salah, tampil dikali 100.")
 
