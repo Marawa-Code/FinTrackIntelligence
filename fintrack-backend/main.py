@@ -3,6 +3,7 @@ import statistics
 from datetime import date, timedelta
 from threading import Lock
 from time import monotonic
+from typing import Any
 
 import requests
 from fastapi import FastAPI, HTTPException
@@ -63,7 +64,9 @@ SCORE_WEIGHTS = {
     "ma_position": 0.20,
 }
 
-_cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
+# Cache menyimpan dua bentuk: daftar bank (ringkasan, peringkat, histori) dan
+# satu objek laporan subsektor. Karena itu isinya bertipe Any, bukan daftar.
+_cache: dict[str, tuple[float, Any]] = {}
 _cache_lock = Lock()
 
 # Kunci cache histori memuat rentang tanggal, jadi tiap rentang baru yang
@@ -73,7 +76,7 @@ _cache_lock = Lock()
 _MAX_CACHE_ENTRIES = 256
 
 
-def _get_cached(key: str) -> list[dict[str, object]] | None:
+def _get_cached(key: str) -> Any:
     with _cache_lock:
         entry = _cache.get(key)
         if entry is None:
@@ -88,7 +91,7 @@ def _get_cached(key: str) -> list[dict[str, object]] | None:
 
 
 def _set_cached(
-    key: str, value: list[dict[str, object]], ttl_seconds: int = CACHE_TTL_SECONDS
+    key: str, value: Any, ttl_seconds: int = CACHE_TTL_SECONDS
 ) -> None:
     with _cache_lock:
         if len(_cache) >= _MAX_CACHE_ENTRIES:
@@ -772,3 +775,180 @@ def get_banks_intelligence() -> list[dict[str, object]]:
         _set_cached("banks:intelligence", intelligence)
 
     return intelligence
+
+
+# Laporan subsektor memuat agregat seluruh bank di subsektor ini sekaligus
+# papan peringkatnya, dan setiap panggilan menagih satu kredit Sectors. Isinya
+# bergerak lambat — kapitalisasi pasar berubah harian, laba dan pendapatan
+# kuartalan — jadi cache-nya dibuat jauh lebih panjang daripada ringkasan
+# harga: aplikasi boleh dibuka berulang kali tanpa menagih kredit baru.
+SECTOR_CACHE_TTL_SECONDS = 60 * 60
+
+# Nama kunci metrik pada tiap papan peringkat. `top_revenue` sengaja tidak
+# dipatok karena isinya belum pernah diperiksa langsung; barisnya tetap
+# terbaca lewat pencarian angka di _board_rows.
+SECTOR_BOARD_METRIC_KEYS = {
+    "top_mcap": "market_cap",
+    "top_profit": "profit_ttm",
+    "top_growth": "revenue_growth",
+}
+
+# Urutan papan di aplikasi, beserta cara menampilkan angkanya. Sectors
+# mengirim rasio sebagai pecahan, bukan persen.
+SECTOR_BOARDS = (
+    ("top_mcap", "Kapitalisasi pasar terbesar", "rupiah"),
+    ("top_profit", "Laba terbesar (TTM)", "rupiah"),
+    ("top_revenue", "Pendapatan terbesar (TTM)", "rupiah"),
+    ("top_growth", "Pertumbuhan pendapatan tertinggi", "persen"),
+)
+
+
+def _sector_metric(block: object, *keys: str) -> float | None:
+    """Angka pertama yang ada di antara `keys` pada sebuah objek Sectors."""
+    if not isinstance(block, dict):
+        return None
+
+    for key in keys:
+        value = block.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+
+    return None
+
+
+def _board_rows(board: object, metric_key: str | None) -> list[dict[str, object]]:
+    """Ubah satu papan peringkat Sectors menjadi daftar baris siap tampil.
+
+    Sectors mengirim papan sebagai objek berkunci simbol saham, misalnya
+    `{"BBCA.JK": {"name": ..., "market_cap": ...}}`, dan urutan kuncinya sudah
+    urut peringkat. Nama kunci metriknya berbeda antar papan, dan satu papan
+    belum pernah diperiksa langsung, jadi angkanya dicari sebagai field
+    numerik selain `name` alih-alih ditebak namanya.
+    """
+    if not isinstance(board, dict):
+        return []
+
+    rows: list[dict[str, object]] = []
+    for symbol, entry in board.items():
+        if not isinstance(entry, dict):
+            continue
+
+        value = entry.get(metric_key) if metric_key is not None else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            value = None
+            for key, candidate in entry.items():
+                if key == "name" or isinstance(candidate, bool):
+                    continue
+                if isinstance(candidate, (int, float)):
+                    value = candidate
+                    break
+
+        if value is None:
+            continue
+
+        clean_symbol = str(symbol).upper().removesuffix(".JK")
+        rows.append(
+            {
+                "symbol": clean_symbol,
+                "name": entry.get("name"),
+                "value": value,
+                # Hanya empat bank yang punya endpoint histori dan skor, jadi
+                # aplikasi perlu tahu baris mana yang bisa diketuk.
+                "tracked": clean_symbol in BANK_SYMBOLS,
+            }
+        )
+
+    return rows
+
+
+@app.get("/api/sector/banks")
+def get_sector_banks() -> dict[str, object]:
+    """Denyut subsektor perbankan dan papan peringkat anggotanya.
+
+    Perlu ditegaskan: endpoint Sectors yang dipakai di sini TIDAK mengirim
+    daftar lengkap anggota subsektor, hanya lima teratas per metrik. Jadi
+    layar sektor memang menampilkan peringkat teratas, bukan seluruh bank.
+    """
+    cached = _get_cached("sector:banks")
+    if cached is not None:
+        return cached
+
+    if not SECTORS_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="SECTORS_API_KEY belum dikonfigurasi di file .env.",
+        )
+
+    try:
+        response = requests.get(
+            f"{SECTORS_API_BASE_URL}/subsector/report/banks/",
+            headers={"Authorization": SECTORS_API_KEY},
+            timeout=30,
+        )
+        response.raise_for_status()
+        report = response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Laporan subsektor perbankan belum dapat diambil dari Sectors.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Format laporan subsektor tidak dikenali.",
+        ) from exc
+
+    if not isinstance(report, dict):
+        raise HTTPException(
+            status_code=502,
+            detail="Format laporan subsektor tidak dikenali.",
+        )
+
+    statistics = report.get("statistics")
+    statistics = statistics if isinstance(statistics, dict) else {}
+
+    market_cap = report.get("market_cap")
+    market_cap = market_cap if isinstance(market_cap, dict) else {}
+    mcap_summary = market_cap.get("mcap_summary")
+    mcap_change = (
+        mcap_summary.get("mcap_change") if isinstance(mcap_summary, dict) else None
+    )
+
+    companies = report.get("companies")
+    top_companies = companies.get("top_companies") if isinstance(companies, dict) else None
+    top_companies = top_companies if isinstance(top_companies, dict) else {}
+
+    payload = {
+        "sub_sector": report.get("sub_sector"),
+        "total_companies": _sector_metric(statistics, "total_companies"),
+        "market_cap": {
+            "total": _sector_metric(market_cap, "total_market_cap"),
+            "average": _sector_metric(market_cap, "avg_market_cap"),
+            "change_1w": _sector_metric(mcap_change, "1w"),
+            "change_ytd": _sector_metric(mcap_change, "ytd"),
+            "change_1y": _sector_metric(mcap_change, "1y"),
+        },
+        "valuation": {
+            "median_pe": _sector_metric(statistics, "filtered_median_pe"),
+            "weighted_average_pe": _sector_metric(
+                statistics, "filtered_weighted_avg_pe"
+            ),
+        },
+        "boards": [
+            {
+                "key": key,
+                "title": title,
+                "format": number_format,
+                "rows": _board_rows(
+                    top_companies.get(key), SECTOR_BOARD_METRIC_KEYS.get(key)
+                ),
+            }
+            for key, title, number_format in SECTOR_BOARDS
+        ],
+    }
+
+    # Berbeda dari skor bank, laporan ini tidak pernah datang sebagian: satu
+    # panggilan berhasil berarti seluruh isinya lengkap. Jadi selalu di-cache.
+    _set_cached("sector:banks", payload, SECTOR_CACHE_TTL_SECONDS)
+
+    return payload

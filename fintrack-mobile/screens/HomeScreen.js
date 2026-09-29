@@ -11,6 +11,7 @@ import {
 
 import Disclaimer from '../components/Disclaimer';
 import { BASE_URL } from '../config/api';
+import { buildDailySummary } from '../utils/dailySummary';
 import { changeTone, scoreTone } from '../utils/scoreTone';
 
 export default function HomeScreen({ navigation }) {
@@ -77,6 +78,14 @@ export default function HomeScreen({ navigation }) {
   }
 
   const scoreBySymbol = new Map(scores.map((item) => [item.symbol, item]));
+  const ringkasan = buildDailySummary(banks, scores);
+
+  // Backend membatasi riwayat anomali tiap bank, jadi angka ini adalah jumlah
+  // temuan yang dikirim, bukan jumlah seluruh anomali yang pernah terjadi.
+  const jumlahAnomali = scores.reduce(
+    (total, bank) => total + (Array.isArray(bank.anomaly_history) ? bank.anomaly_history.length : 0),
+    0,
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -85,6 +94,27 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.title}>Bank pilihan</Text>
         <Text style={styles.subtitle}>Harga, perubahan harian, dan skor relatif</Text>
       </View>
+
+      {ringkasan ? (
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>RINGKASAN HARI INI</Text>
+          <Text style={styles.summaryText}>{ringkasan}</Text>
+        </View>
+      ) : null}
+
+      {jumlahAnomali > 0 ? (
+        <TouchableOpacity
+          style={styles.alertCard}
+          activeOpacity={0.78}
+          onPress={() => navigation.navigate('Anomali')}
+        >
+          <View style={styles.alertKiri}>
+            <Text style={styles.alertJudul}>{jumlahAnomali} pergerakan tidak wajar</Text>
+            <Text style={styles.alertTeks}>Ketuk untuk melihat tanggal dan z-score-nya</Text>
+          </View>
+          <Text style={styles.alertTautan}>Lihat</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {banks.length === 0 ? (
         <View style={styles.emptyCard}>
@@ -148,6 +178,14 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.rankingButtonText}>Lihat ranking harian</Text>
       </Pressable>
 
+      <Pressable style={styles.sectorButton} onPress={() => navigation.navigate('Sector')}>
+        <Text style={styles.sectorButtonText}>Lihat kondisi sektor</Text>
+      </Pressable>
+
+      <Pressable style={styles.sectorButton} onPress={() => navigation.navigate('Anomali')}>
+        <Text style={styles.sectorButtonText}>Pantauan anomali</Text>
+      </Pressable>
+
       <Disclaimer />
     </ScrollView>
   );
@@ -189,6 +227,54 @@ const styles = StyleSheet.create({
     color: '#63736F',
     fontSize: 14,
     marginTop: 4,
+  },
+  summaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5ECE9',
+    borderLeftColor: '#167D68',
+    borderLeftWidth: 3,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+  },
+  summaryLabel: {
+    color: '#167D68',
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+  },
+  summaryText: {
+    color: '#16332E',
+    fontSize: 13.5,
+    lineHeight: 21,
+    marginTop: 8,
+  },
+  alertCard: {
+    alignItems: 'center',
+    backgroundColor: '#FBEEE9',
+    borderRadius: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  alertKiri: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  alertJudul: {
+    color: '#B4472F',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  alertTeks: {
+    color: '#63736F',
+    fontSize: 12,
+    marginTop: 3,
+  },
+  alertTautan: {
+    color: '#B4472F',
+    fontSize: 13,
+    fontWeight: '700',
   },
   card: {
     alignItems: 'center',
@@ -244,6 +330,18 @@ const styles = StyleSheet.create({
   },
   rankingButtonText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  sectorButton: {
+    alignItems: 'center',
+    borderColor: '#167D68',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingVertical: 14,
+  },
+  sectorButtonText: {
+    color: '#167D68',
     fontSize: 15,
     fontWeight: '700',
   },
