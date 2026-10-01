@@ -11,9 +11,9 @@ import {
 
 import Chip from '../components/Chip';
 import Disclaimer from '../components/Disclaimer';
-import { BASE_URL } from '../config/api';
 import { TAB_BAR_CLEARANCE } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
+import { ambilJson } from '../utils/ambil';
 import { URUTAN, URUTAN_BAWAAN, urutkanBank } from '../utils/bankSort';
 import { buildDailyChips } from '../utils/dailySummary';
 import { rupiahSingkat } from '../utils/rupiah';
@@ -43,31 +43,22 @@ export default function HomeScreen({ navigation }) {
       setLoading(true);
       setError('');
       try {
-        const [summaryResponse, intelligenceResponse] = await Promise.all([
-          fetch(`${BASE_URL}/api/banks/summary`),
-          fetch(`${BASE_URL}/api/banks/intelligence`).catch(() => null),
+        const [data, intelligence] = await Promise.all([
+          ambilJson('/api/banks/summary'),
+          ambilJson('/api/banks/intelligence').catch(() => null),
         ]);
-        if (!summaryResponse.ok) {
-          throw new Error(`Permintaan gagal (${summaryResponse.status})`);
-        }
-        const data = await summaryResponse.json();
         if (!Array.isArray(data)) throw new Error('Format data tidak sesuai.');
 
         // Skor bersifat pelengkap: kalau endpoint skor bermasalah, kartu bank
         // tetap tampil tanpa badge skor.
-        let intelligence = [];
-        if (intelligenceResponse && intelligenceResponse.ok) {
-          try {
-            const parsed = await intelligenceResponse.json();
-            if (Array.isArray(parsed)) intelligence = parsed;
-          } catch (error) {
-            console.warn('Format data skor tidak sesuai:', error);
-          }
+        if (intelligence != null && !Array.isArray(intelligence)) {
+          console.warn('Format data skor tidak sesuai.');
         }
+        const daftarSkor = Array.isArray(intelligence) ? intelligence : [];
 
         if (isMounted) {
           setBanks(data);
-          setScores(intelligence);
+          setScores(daftarSkor);
         }
       } catch (error) {
         console.warn('Gagal memuat ringkasan bank:', error);

@@ -10,9 +10,9 @@ import {
 } from 'react-native';
 
 import Disclaimer from '../components/Disclaimer';
-import { BASE_URL } from '../config/api';
 import { TAB_BAR_CLEARANCE } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
+import { ambilJson } from '../utils/ambil';
 import { rupiahSingkat } from '../utils/rupiah';
 import { changeTone } from '../utils/scoreTone';
 
@@ -53,12 +53,7 @@ export default function SectorScreen({ navigation }) {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`${BASE_URL}/api/sector/banks`);
-        if (!response.ok) {
-          throw new Error(`Permintaan gagal (${response.status})`);
-        }
-
-        const data = await response.json();
+        const data = await ambilJson('/api/sector/banks');
         if (!data || !Array.isArray(data.boards)) {
           throw new Error('Format data tidak sesuai.');
         }

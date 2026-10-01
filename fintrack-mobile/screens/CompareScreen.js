@@ -3,9 +3,9 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import Chip from '../components/Chip';
 import Disclaimer from '../components/Disclaimer';
-import { BASE_URL } from '../config/api';
 import { TAB_BAR_CLEARANCE } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
+import { ambilJson } from '../utils/ambil';
 import { cariPersilangan, pemimpinTerakhir } from '../utils/scoreCrossing';
 import { changeTone, scoreTone } from '../utils/scoreTone';
 
@@ -114,27 +114,16 @@ export default function CompareScreen() {
       try {
         // Tren bersifat pelengkap: kalau endpointnya bermasalah, perbandingan
         // skor hari ini tetap tampil tanpa bagian persilangan.
-        const [response, trendResponse] = await Promise.all([
-          fetch(`${BASE_URL}/api/banks/intelligence`),
-          fetch(`${BASE_URL}/api/banks/score-trend`).catch(() => null),
+        const [data, tren] = await Promise.all([
+          ambilJson('/api/banks/intelligence'),
+          ambilJson('/api/banks/score-trend').catch(() => null),
         ]);
-        if (!response.ok) {
-          throw new Error(`Permintaan gagal (${response.status})`);
-        }
-
-        const data = await response.json();
         if (!Array.isArray(data)) throw new Error('Format data tidak sesuai.');
 
-        if (trendResponse && trendResponse.ok && isMounted) {
-          try {
-            const trenData = await trendResponse.json();
-            setTren(Array.isArray(trenData?.points) ? trenData.points : []);
-          } catch {
-            setTren([]);
-          }
+        if (isMounted) {
+          setTren(tren && Array.isArray(tren.points) ? tren.points : []);
+          setBanks(data);
         }
-
-        if (isMounted) setBanks(data);
       } catch (error) {
         console.warn('Gagal memuat data adu bank:', error);
         if (isMounted) {

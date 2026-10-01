@@ -11,8 +11,8 @@ import {
 import { LineChart } from 'react-native-chart-kit/v2';
 
 import Disclaimer from '../components/Disclaimer';
-import { BASE_URL } from '../config/api';
 import { colors, font, radius } from '../config/theme';
+import { ambilJson } from '../utils/ambil';
 import { changeTone, scoreTone } from '../utils/scoreTone';
 
 // Bobot ini hanya untuk ditampilkan. Angka sebenarnya ada di SCORE_WEIGHTS
@@ -132,41 +132,24 @@ export default function DetailScreen({ route }) {
         const query = `start=${toDateParam(start)}&end=${toDateParam(end)}`;
         // Skor dan tren bersifat pelengkap: kalau endpointnya bermasalah,
         // grafik harga tetap tampil tanpa bagian skor.
-        const [historyResponse, intelligenceResponse, trendResponse] = await Promise.all([
-          fetch(`${BASE_URL}/api/banks/${encodeURIComponent(symbol)}/history?${query}`),
-          fetch(`${BASE_URL}/api/banks/intelligence`).catch(() => null),
-          fetch(`${BASE_URL}/api/banks/score-trend`).catch(() => null),
+        const [riwayat, intelligence, tren] = await Promise.all([
+          ambilJson(`/api/banks/${encodeURIComponent(symbol)}/history?${query}`),
+          ambilJson('/api/banks/intelligence').catch(() => null),
+          ambilJson('/api/banks/score-trend').catch(() => null),
         ]);
 
-        if (intelligenceResponse && intelligenceResponse.ok && isMounted) {
-          try {
-            const daftar = await intelligenceResponse.json();
-            const milik = Array.isArray(daftar)
-              ? daftar.find((bank) => bank.symbol === symbol)
-              : null;
-            setIntel(milik ?? null);
-          } catch {
-            setIntel(null);
-          }
+        if (isMounted) {
+          const milik = Array.isArray(intelligence)
+            ? intelligence.find((bank) => bank.symbol === symbol)
+            : null;
+          setIntel(milik ?? null);
+          setTren(tren && Array.isArray(tren.points) && tren.points.length > 1 ? tren : null);
         }
 
-        if (trendResponse && trendResponse.ok && isMounted) {
-          try {
-            const data = await trendResponse.json();
-            setTren(Array.isArray(data?.points) && data.points.length > 1 ? data : null);
-          } catch {
-            setTren(null);
-          }
-        }
-
-        if (!historyResponse.ok) {
-          throw new Error(`Permintaan gagal (${historyResponse.status})`);
-        }
-        const data = await historyResponse.json();
-        if (!Array.isArray(data)) throw new Error('Format data tidak sesuai.');
+        if (!Array.isArray(riwayat)) throw new Error('Format data tidak sesuai.');
         if (isMounted) {
           setHistory(
-            data
+            riwayat
               .filter((item) => Number.isFinite(Number(item.close)))
               .sort((a, b) => String(a.date).localeCompare(String(b.date)))
               .map((item) => ({

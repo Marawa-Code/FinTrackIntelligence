@@ -10,9 +10,9 @@ import {
 } from 'react-native';
 
 import Disclaimer from '../components/Disclaimer';
-import { BASE_URL } from '../config/api';
 import { TAB_BAR_CLEARANCE } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
+import { ambilJson } from '../utils/ambil';
 import { changeTone } from '../utils/scoreTone';
 
 // Backend mengirim semua rasio sebagai pecahan, bukan persen.
@@ -45,12 +45,7 @@ export default function AnomalyScreen({ navigation }) {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`${BASE_URL}/api/banks/intelligence`);
-        if (!response.ok) {
-          throw new Error(`Permintaan gagal (${response.status})`);
-        }
-
-        const data = await response.json();
+        const data = await ambilJson('/api/banks/intelligence');
         if (!Array.isArray(data)) throw new Error('Format data tidak sesuai.');
 
         const daftar = [];
