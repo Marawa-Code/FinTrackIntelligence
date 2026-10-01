@@ -517,6 +517,113 @@ def _load_market_window(
     return closes, volumes, returns_with_dates
 
 
+def _compute_metrics(closes: list[float], change: float | None) -> dict[str, object]:
+    """Metrik turunan dari satu deret harga penutup.
+
+    Dipakai dua tempat: skor hari ini di /api/banks/intelligence dan tiap titik
+    tanggal di /api/banks/score-trend.
+
+    `change` adalah perubahan harian dari ringkasan Sectors. Ia hanya tersedia
+    untuk hari ini, jadi pemanggil yang menghitung hari-hari lampau
+    mengirimnya None dan momentum jatuh ke return hari terakhir di jendela itu.
+    """
+    returns = _daily_returns(closes)
+
+    ma7 = _moving_average(closes, 7)
+    ma30 = _moving_average(closes, 30)
+    last_close = closes[-1] if closes else None
+
+    trend = None
+    if len(closes) >= 2 and closes[0]:
+        trend = (closes[-1] - closes[0]) / closes[0]
+
+    volatility = statistics.pstdev(returns) if len(returns) >= 2 else None
+
+    ma_position = None
+    if last_close is not None:
+        offsets = [last_close / average - 1 for average in (ma7, ma30) if average]
+        if offsets:
+            ma_position = statistics.fmean(offsets)
+
+    momentum = change if change is not None else (returns[-1] if returns else None)
+
+    return {
+        "last_close": last_close,
+        "ma7": ma7,
+        "ma30": ma30,
+        "trend": trend,
+        "volatility": volatility,
+        "ma_position": ma_position,
+        "momentum": momentum,
+        "sessions": len(closes),
+    }
+
+
+def _composite_scores(
+    metrics_by_symbol: dict[str, dict[str, object]],
+) -> tuple[dict[str, float | None], dict[str, dict[str, float | None]]]:
+    """Skor empat komponen dan skor kompositnya untuk sekelompok bank.
+
+    Mengembalikan dua peta: skor komposit per simbol, dan skor keempat komponen
+    per simbol.
+
+    Satu-satunya tempat komposit dihitung. Skor bergerak sengaja memakai fungsi
+    ini alih-alih menyalin rumusnya, karena salinan yang terpisah bisa diam-diam
+    berselisih dengan angka besar di layar setelah salah satunya diubah.
+
+    Momentum dan tren: makin besar makin baik. Stabilitas: volatilitas dibalik
+    supaya makin tenang makin tinggi.
+    """
+    symbols = list(metrics_by_symbol)
+
+    momentum_score = _peer_score(
+        {symbol: metrics_by_symbol[symbol]["momentum"] for symbol in symbols}  # type: ignore[dict-item]
+    )
+    trend_score = _peer_score(
+        {symbol: metrics_by_symbol[symbol]["trend"] for symbol in symbols}  # type: ignore[dict-item]
+    )
+    stability_score = _peer_score(
+        {
+            symbol: (
+                None
+                if metrics_by_symbol[symbol]["volatility"] is None
+                else -metrics_by_symbol[symbol]["volatility"]  # type: ignore[operator]
+            )
+            for symbol in symbols
+        }
+    )
+    ma_score = _peer_score(
+        {symbol: metrics_by_symbol[symbol]["ma_position"] for symbol in symbols}  # type: ignore[dict-item]
+    )
+
+    scores: dict[str, float | None] = {}
+    components_by_symbol: dict[str, dict[str, float | None]] = {}
+
+    for symbol in symbols:
+        components = {
+            "momentum": momentum_score[symbol],
+            "trend": trend_score[symbol],
+            "stability": stability_score[symbol],
+            "ma_position": ma_score[symbol],
+        }
+
+        if all(value is not None for value in components.values()):
+            score = round(
+                sum(
+                    SCORE_WEIGHTS[name] * value  # type: ignore[operator]
+                    for name, value in components.items()
+                ),
+                1,
+            )
+        else:
+            score = None
+
+        scores[symbol] = score
+        components_by_symbol[symbol] = components
+
+    return scores, components_by_symbol
+
+
 def _score_label(score: float | None) -> str:
     """Label yang jujur menyatakan skor ini perbandingan, bukan penilaian mutlak.
 
@@ -609,40 +716,9 @@ def get_banks_intelligence() -> list[dict[str, object]]:
             print(f"[FinTrack] Gagal menganalisis {symbol}: {exc.detail}")
             continue
 
-        returns = _daily_returns(closes)
-
-        ma7 = _moving_average(closes, 7)
-        ma30 = _moving_average(closes, 30)
-        last_close = closes[-1] if closes else None
-
-        trend = None
-        if len(closes) >= 2 and closes[0]:
-            trend = (closes[-1] - closes[0]) / closes[0]
-
-        volatility = statistics.pstdev(returns) if len(returns) >= 2 else None
-
-        ma_position = None
-        if last_close is not None:
-            offsets = [
-                last_close / average - 1 for average in (ma7, ma30) if average
-            ]
-            if offsets:
-                ma_position = statistics.fmean(offsets)
-
         change = _to_float((summaries.get(symbol) or {}).get("daily_close_change"))
-        momentum = change if change is not None else (returns[-1] if returns else None)
-
-        metrics[symbol] = {
-            "last_close": last_close,
-            "ma7": ma7,
-            "ma30": ma30,
-            "trend": trend,
-            "volatility": volatility,
-            "ma_position": ma_position,
-            "momentum": momentum,
-            "sessions": len(closes),
-        }
-        anomalies[symbol] = _detect_price_anomaly(returns)
+        metrics[symbol] = _compute_metrics(closes, change)
+        anomalies[symbol] = _detect_price_anomaly(_daily_returns(closes))
         volume_spikes[symbol] = _detect_volume_spike(volumes)
         anomaly_histories[symbol] = _find_anomaly_history(dated_returns)
         analysed.append(symbol)
@@ -653,48 +729,15 @@ def get_banks_intelligence() -> list[dict[str, object]]:
             detail="Gagal mengambil data historis untuk seluruh bank.",
         )
 
-    # Momentum dan tren: makin besar makin baik.
-    # Stabilitas: volatilitas dibalik supaya makin tenang makin tinggi.
-    momentum_score = _peer_score(
-        {symbol: metrics[symbol]["momentum"] for symbol in analysed}
-    )
-    trend_score = _peer_score(
-        {symbol: metrics[symbol]["trend"] for symbol in analysed}
-    )
-    stability_score = _peer_score(
-        {
-            symbol: (
-                None
-                if metrics[symbol]["volatility"] is None
-                else -metrics[symbol]["volatility"]
-            )
-            for symbol in analysed
-        }
-    )
-    ma_score = _peer_score(
-        {symbol: metrics[symbol]["ma_position"] for symbol in analysed}
+    skor, komponen_per_bank = _composite_scores(
+        {symbol: metrics[symbol] for symbol in analysed}
     )
 
     results = []
     for symbol in analysed:
         summary = summaries.get(symbol) or {}
-        components = {
-            "momentum": momentum_score[symbol],
-            "trend": trend_score[symbol],
-            "stability": stability_score[symbol],
-            "ma_position": ma_score[symbol],
-        }
-
-        if all(value is not None for value in components.values()):
-            score = round(
-                sum(
-                    SCORE_WEIGHTS[name] * value  # type: ignore[operator]
-                    for name, value in components.items()
-                ),
-                1,
-            )
-        else:
-            score = None
+        components = komponen_per_bank[symbol]
+        score = skor[symbol]
 
         anomaly = anomalies[symbol]
         volume_spike = volume_spikes[symbol]
@@ -705,7 +748,7 @@ def get_banks_intelligence() -> list[dict[str, object]]:
                 "company_name": summary.get("company_name"),
                 "score": score,
                 "score_label": _score_label(score),
-                "components": dict(components),
+                "components": components,
                 "daily_close_change": summary.get("daily_close_change"),
                 "last_close_price": summary.get("last_close_price"),
                 "market_cap": summary.get("market_cap"),
@@ -775,6 +818,162 @@ def get_banks_intelligence() -> list[dict[str, object]]:
         _set_cached("banks:intelligence", intelligence)
 
     return intelligence
+
+
+# Skor bergerak: skor hari-hari lampau dihitung ulang, bukan disimpan. Sectors
+# tidak menyediakan skor historis, jadi tiap titik dihitung dari harga penutup
+# pada jendela yang sama dengan skor hari ini (INTELLIGENCE_WINDOW_DAYS).
+SCORE_TREND_DAYS = 60
+SCORE_TREND_POINTS = 20
+SCORE_TREND_CACHE_TTL_SECONDS = 60 * 60
+
+
+def _dated_closes(history: list[dict[str, object]]) -> list[tuple[str, float]]:
+    """Deret (tanggal, harga penutup) yang sudah urut menaik.
+
+    Hari tanpa harga valid dilewati. Daftar ini yang dipotong per jendela saat
+    menghitung skor tiap tanggal, jadi bentuknya sengaja tetap sederhana.
+    """
+    pairs: list[tuple[str, float]] = []
+    for record in history:
+        harga = _to_float(record.get("close"))
+        if harga is None:
+            continue
+        pairs.append((str(record.get("date")), harga))
+    return pairs
+
+
+def _sample_dates(dates: list[date], count: int) -> list[date]:
+    """Ambil `count` tanggal yang tersebar merata dari daftar yang sudah urut.
+
+    Titik terakhir selalu ikut: tanpa itu, garis tren berhenti sebelum hari ini
+    dan tidak bisa disambungkan ke angka besar di layar.
+    """
+    if len(dates) <= count:
+        return list(dates)
+
+    step = (len(dates) - 1) / (count - 1)
+    picked = {dates[round(index * step)] for index in range(count)}
+    return sorted(picked)
+
+
+@app.get("/api/banks/score-trend")
+def get_banks_score_trend() -> dict[str, object]:
+    """Skor komposit keempat bank pada beberapa tanggal terakhir.
+
+    Inilah yang tidak bisa diberikan /api/banks/intelligence: endpoint itu
+    hanya tahu skor hari ini. Skor bersifat relatif antar peer, jadi satu titik
+    di sini berarti "bagaimana keempat bank ini dibandingkan satu sama lain pada
+    tanggal itu" — bukan skor bank itu dibandingkan dengan dirinya di masa lalu.
+
+    Biayanya satu permintaan Sectors per bank untuk rentang yang lebih lebar,
+    sama banyaknya dengan /api/banks/intelligence. Hasilnya di-cache satu jam.
+    """
+    cached = _get_cached("banks:score-trend")
+    if cached is not None:
+        return cached
+
+    end = date.today()
+    # Jendela tertua yang dihitung berakhir SCORE_TREND_DAYS lalu, dan jendela
+    # itu sendiri memerlukan INTELLIGENCE_WINDOW_DAYS hari ke belakang. Rentang
+    # ambilnya harus mencakup keduanya, kalau tidak titik paling tua akan
+    # dihitung dari harga yang tidak lengkap.
+    start = end - timedelta(days=INTELLIGENCE_WINDOW_DAYS + SCORE_TREND_DAYS)
+    batas_awal = (end - timedelta(days=SCORE_TREND_DAYS)).isoformat()
+
+    series_per_bank: dict[str, list[tuple[str, float]]] = {}
+    for symbol in BANK_SYMBOLS:
+        try:
+            history = _fetch_history(symbol, start, end)
+        except HTTPException as exc:
+            # Sama seperti intelligence: satu bank yang gagal tidak boleh
+            # mengosongkan seluruh grafik.
+            print(f"[FinTrack] Gagal mengambil riwayat {symbol} untuk skor bergerak: {exc.detail}")
+            continue
+        deret = _dated_closes(history)
+        if deret:
+            series_per_bank[symbol] = deret
+
+    if len(series_per_bank) < 2:
+        raise HTTPException(
+            status_code=502,
+            detail="Riwayat harga belum cukup untuk menyusun skor bergerak.",
+        )
+
+    # Sumbu tanggal bersama: hanya tanggal yang ada di seluruh bank yang berhasil
+    # diambil. Skor ini perbandingan antar bank pada hari yang sama, jadi
+    # tanggal yang cuma dimiliki sebagian bank tidak bisa dipakai.
+    tanggal_bersama = set.intersection(
+        *(set(t for t, _ in deret) for deret in series_per_bank.values())
+    )
+
+    # Dikonversi ke objek tanggal, bukan dibiarkan sebagai teks, supaya batas
+    # jendela bisa dihitung dengan pengurangan hari. Tanggal yang tidak terbaca
+    # dilewati alih-alih menggagalkan seluruh endpoint.
+    sumbu: list[date] = []
+    for tanggal in sorted(tanggal_bersama):
+        if tanggal < batas_awal:
+            continue
+        try:
+            sumbu.append(date.fromisoformat(tanggal))
+        except ValueError:
+            continue
+
+    if len(sumbu) < 2:
+        raise HTTPException(
+            status_code=502,
+            detail="Tidak ada tanggal yang dimiliki seluruh bank pada rentang skor bergerak.",
+        )
+
+    tanggal_titik = _sample_dates(sumbu, SCORE_TREND_POINTS)
+    tanggal_terakhir = tanggal_titik[-1].isoformat()
+
+    # Perubahan harian dari ringkasan Sectors hanya ada untuk hari ini, dan
+    # itulah sumber momentum yang dipakai skor besar di layar. Titik terakhir
+    # sengaja memakai sumber yang sama supaya ujung garis bertemu persis dengan
+    # angka di atasnya.
+    #
+    # Tanpa ini keduanya bisa berselisih jauh, bukan cuma membulat: perubahan
+    # dari ringkasan dan return hari terakhir di endpoint histori pernah
+    # berbeda tanda untuk bank yang sama (+0,96% vs -0,95%). Karena momentum
+    # berbobot 0,30, selisih sekecil itu menggeser titik terakhir sampai 8 poin
+    # dari angka besar yang ditampilkan tepat di atasnya.
+    perubahan_hari_ini = {
+        bank["symbol"]: _to_float(bank.get("daily_close_change"))
+        for bank in get_banks_summary()
+    }
+
+    points: list[dict[str, object]] = []
+    for tanggal in tanggal_titik:
+        batas_jendela = (tanggal - timedelta(days=INTELLIGENCE_WINDOW_DAYS)).isoformat()
+        batas_akhir = tanggal.isoformat()
+        titik_terakhir = batas_akhir == tanggal_terakhir
+
+        metrics = {
+            symbol: _compute_metrics(
+                [harga for t, harga in deret if batas_jendela <= t <= batas_akhir],
+                # Titik lampau tidak punya padanan ringkasan ini, jadi
+                # momentumnya memakai return hari terakhir di jendelanya sendiri.
+                perubahan_hari_ini.get(symbol) if titik_terakhir else None,
+            )
+            for symbol, deret in series_per_bank.items()
+        }
+        skor, _ = _composite_scores(metrics)
+        points.append({"date": batas_akhir, "scores": skor})
+
+    payload = {
+        "as_of": points[-1]["date"],
+        "window_days": INTELLIGENCE_WINDOW_DAYS,
+        "symbols": sorted(series_per_bank),
+        "points": points,
+    }
+
+    # Sama seperti intelligence: kalau ada bank yang gagal, hasilnya tidak
+    # di-cache supaya percobaan berikutnya masih bisa melengkapinya.
+    if len(series_per_bank) == len(BANK_SYMBOLS):
+        _set_cached("banks:score-trend", payload, SCORE_TREND_CACHE_TTL_SECONDS)
+
+    return payload
 
 
 # Laporan subsektor memuat agregat seluruh bank di subsektor ini sekaligus

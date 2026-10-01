@@ -26,7 +26,8 @@ Jangan commit file `.env`; file itu sudah diabaikan oleh Git.
 Dari folder `fintrack-backend/` yang sama, jalankan:
 
 ```powershell
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
 ```
 
 Cek endpoint health di `http://localhost:8000/health` dan ringkasan bank di `http://localhost:8000/api/banks/summary`.
