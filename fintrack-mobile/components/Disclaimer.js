@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { colors, font, radius } from '../config/theme';
+
 export default function Disclaimer() {
   return (
     <View style={styles.box}>
@@ -15,22 +17,22 @@ export default function Disclaimer() {
 
 const styles = StyleSheet.create({
   box: {
-    backgroundColor: '#F6F9F8',
-    borderColor: '#E5ECE9',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.control,
     borderWidth: 1,
     marginTop: 24,
     padding: 14,
   },
   label: {
-    color: '#71817D',
-    fontSize: 10,
+    color: colors.faint,
+    fontSize: font.micro,
     fontWeight: '700',
     letterSpacing: 1,
   },
   text: {
-    color: '#63736F',
-    fontSize: 11,
+    color: colors.body,
+    fontSize: font.micro,
     lineHeight: 17,
     marginTop: 6,
   },
