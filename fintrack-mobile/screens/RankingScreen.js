@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import Disclaimer from '../components/Disclaimer';
 import { BASE_URL } from '../config/api';
+import { TAB_BAR_CLEARANCE } from '../config/layout';
+import { colors, font, radius } from '../config/theme';
 import { changeTone, scoreTone } from '../utils/scoreTone';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -46,7 +56,7 @@ function clampScore(score) {
   return Math.max(0, Math.min(100, number));
 }
 
-export default function RankingScreen() {
+export default function RankingScreen({ navigation }) {
   const [ranking, setRanking] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -83,7 +93,7 @@ export default function RankingScreen() {
   if (loading) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#167D68" />
+        <ActivityIndicator size="large" color={colors.brand} />
         <Text style={styles.subtitle}>Menghitung skor bank...</Text>
       </View>
     );
@@ -96,6 +106,22 @@ export default function RankingScreen() {
       <Text style={styles.subtitle}>
         Skor relatif 0–100 antar empat bank. Angka 50 berarti persis rata-rata keempatnya.
       </Text>
+
+      {ranking.length > 1 ? (
+        <TouchableOpacity
+          style={styles.aduCard}
+          activeOpacity={0.78}
+          onPress={() => navigation.navigate('Adu')}
+        >
+          <View style={styles.aduKiri}>
+            <Text style={styles.aduJudul}>Adu dua bank berdampingan</Text>
+            <Text style={styles.aduTeks}>
+              Lihat empat komponen pembentuk skor secara berpasangan
+            </Text>
+          </View>
+          <Text style={styles.aduTautan}>Adu</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {ranking.length === 0 ? (
         <View style={styles.emptyCard}>
@@ -216,7 +242,7 @@ export default function RankingScreen() {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: TAB_BAR_CLEARANCE,
     gap: 12,
   },
   loading: {
@@ -226,30 +252,57 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   eyebrow: {
-    color: '#167D68',
-    fontSize: 11,
+    color: colors.brand,
+    fontSize: font.micro,
     fontWeight: '700',
     letterSpacing: 1.2,
     marginTop: 8,
   },
   title: {
-    color: '#16332E',
-    fontSize: 28,
+    color: colors.ink,
+    fontSize: font.screenTitle,
     fontWeight: '700',
     marginTop: 6,
   },
   subtitle: {
-    color: '#63736F',
-    fontSize: 14,
+    color: colors.body,
+    fontSize: font.body,
     lineHeight: 20,
     marginTop: 4,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE9',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.card,
     borderWidth: 1,
     padding: 16,
+  },
+  aduCard: {
+    alignItems: 'center',
+    backgroundColor: colors.brandSoft,
+    borderRadius: radius.card,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  aduKiri: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  aduJudul: {
+    color: colors.brand,
+    fontSize: font.body,
+    fontWeight: '700',
+  },
+  aduTeks: {
+    color: colors.body,
+    fontSize: font.small,
+    marginTop: 3,
+  },
+  aduTautan: {
+    color: colors.brand,
+    fontSize: font.body,
+    fontWeight: '700',
   },
   cardHeader: {
     alignItems: 'center',
@@ -257,15 +310,15 @@ const styles = StyleSheet.create({
   },
   rankBadge: {
     alignItems: 'center',
-    backgroundColor: '#EAF4F1',
-    borderRadius: 12,
+    backgroundColor: colors.brandSoft,
+    borderRadius: radius.control,
     height: 40,
     justifyContent: 'center',
     width: 48,
   },
   rankText: {
-    color: '#167D68',
-    fontSize: 14,
+    color: colors.brand,
+    fontSize: font.body,
     fontWeight: '700',
   },
   headerInfo: {
@@ -274,36 +327,36 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   symbol: {
-    color: '#16332E',
-    fontSize: 17,
+    color: colors.ink,
+    fontSize: font.title,
     fontWeight: '700',
   },
   companyName: {
-    color: '#71817D',
-    fontSize: 12,
+    color: colors.body,
+    fontSize: font.small,
     marginTop: 3,
   },
   scoreBlock: {
     alignItems: 'center',
   },
   scoreValue: {
-    fontSize: 26,
+    fontSize: font.display,
     fontWeight: '700',
   },
   scoreOutOf: {
-    color: '#8A9895',
-    fontSize: 10,
+    color: colors.faint,
+    fontSize: font.micro,
     marginTop: 1,
   },
   barTrack: {
-    backgroundColor: '#EDF3F1',
-    borderRadius: 4,
+    backgroundColor: colors.chip,
+    borderRadius: radius.bar,
     height: 6,
     marginTop: 14,
     overflow: 'hidden',
   },
   barFill: {
-    borderRadius: 4,
+    borderRadius: radius.bar,
     height: 6,
   },
   metaRow: {
@@ -313,13 +366,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   scoreLabel: {
-    color: '#5C6B67',
+    color: colors.body,
     flexShrink: 1,
-    fontSize: 12,
+    fontSize: font.small,
     fontWeight: '600',
   },
   change: {
-    fontSize: 15,
+    fontSize: font.strong,
     fontWeight: '700',
     marginLeft: 8,
   },
@@ -328,33 +381,33 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   signal: {
-    color: '#5C6B67',
-    fontSize: 12,
+    color: colors.body,
+    fontSize: font.small,
     lineHeight: 18,
   },
   rawLine: {
-    color: '#8A9895',
-    fontSize: 10,
+    color: colors.faint,
+    fontSize: font.micro,
     lineHeight: 15,
     marginTop: 10,
   },
   componentLine: {
-    color: '#8A9895',
-    fontSize: 10,
+    color: colors.faint,
+    fontSize: font.micro,
     lineHeight: 15,
     marginTop: 4,
   },
   history: {
-    backgroundColor: '#FBF4EC',
-    borderColor: '#F0E1CC',
-    borderRadius: 10,
+    backgroundColor: colors.warnSurface,
+    borderColor: colors.warnBorder,
+    borderRadius: radius.inner,
     borderWidth: 1,
     marginTop: 12,
     padding: 12,
   },
   historyTitle: {
-    color: '#8A6420',
-    fontSize: 11,
+    color: colors.warnText,
+    fontSize: font.micro,
     fontWeight: '700',
   },
   historyRow: {
@@ -363,58 +416,58 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   historyDate: {
-    color: '#7A6A55',
-    fontSize: 11,
+    color: colors.warnText,
+    fontSize: font.micro,
   },
   historyMeta: {
-    color: '#7A6A55',
-    fontSize: 11,
+    color: colors.warnText,
+    fontSize: font.micro,
     fontWeight: '600',
   },
   historyEmpty: {
-    color: '#A3AEAB',
-    fontSize: 10,
+    color: colors.faint,
+    fontSize: font.micro,
     lineHeight: 15,
     marginTop: 10,
   },
   footnote: {
-    color: '#8A9895',
-    fontSize: 11,
+    color: colors.faint,
+    fontSize: font.micro,
     lineHeight: 17,
     marginTop: 4,
   },
   emptyCard: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE9',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.card,
     borderWidth: 1,
     gap: 10,
     marginTop: 8,
     padding: 24,
   },
   emptyTitle: {
-    color: '#16332E',
-    fontSize: 17,
+    color: colors.ink,
+    fontSize: font.title,
     fontWeight: '700',
     textAlign: 'center',
   },
   emptyText: {
-    color: '#63736F',
-    fontSize: 13,
+    color: colors.body,
+    fontSize: font.body,
     lineHeight: 20,
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: '#167D68',
-    borderRadius: 10,
+    backgroundColor: colors.brand,
+    borderRadius: radius.inner,
     marginTop: 4,
     paddingHorizontal: 18,
     paddingVertical: 11,
   },
   retryText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: colors.onBrand,
+    fontSize: font.body,
     fontWeight: '700',
   },
 });

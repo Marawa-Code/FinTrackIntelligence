@@ -11,6 +11,8 @@ import {
 
 import Disclaimer from '../components/Disclaimer';
 import { BASE_URL } from '../config/api';
+import { TAB_BAR_CLEARANCE } from '../config/layout';
+import { colors, font, radius } from '../config/theme';
 import { changeTone } from '../utils/scoreTone';
 
 // Backend mengirim semua rasio sebagai pecahan, bukan persen.
@@ -98,7 +100,7 @@ export default function AnomalyScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#167D68" />
+        <ActivityIndicator size="large" color={colors.brand} />
         <Text style={styles.loadingText}>Memeriksa pergerakan tidak wajar...</Text>
       </View>
     );
@@ -177,7 +179,7 @@ export default function AnomalyScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: TAB_BAR_CLEARANCE,
   },
   centered: {
     alignItems: 'center',
@@ -187,45 +189,45 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   loadingText: {
-    color: '#63736F',
-    fontSize: 14,
+    color: colors.body,
+    fontSize: font.body,
   },
   eyebrow: {
-    color: '#167D68',
-    fontSize: 11,
+    color: colors.brand,
+    fontSize: font.micro,
     fontWeight: '700',
     letterSpacing: 1.2,
     marginTop: 8,
   },
   title: {
-    color: '#16332E',
-    fontSize: 28,
+    color: colors.ink,
+    fontSize: font.screenTitle,
     fontWeight: '700',
     marginTop: 6,
   },
   subtitle: {
-    color: '#63736F',
-    fontSize: 14,
+    color: colors.body,
+    fontSize: font.body,
     marginTop: 4,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE9',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.card,
     borderWidth: 1,
     marginTop: 18,
     padding: 18,
   },
   judulCard: {
-    color: '#63736F',
-    fontSize: 11,
+    color: colors.body,
+    fontSize: font.micro,
     fontWeight: '700',
     letterSpacing: 1,
     marginBottom: 6,
   },
   tenangJudul: {
-    color: '#167D68',
-    fontSize: 15,
+    color: colors.brand,
+    fontSize: font.strong,
     fontWeight: '700',
   },
   baris: {
@@ -236,69 +238,69 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   barisTerpisah: {
-    borderTopColor: '#E5ECE9',
+    borderTopColor: colors.border,
     borderTopWidth: 1,
   },
   barisKiri: {
     flex: 1,
   },
   symbol: {
-    color: '#16332E',
-    fontSize: 15,
+    color: colors.ink,
+    fontSize: font.strong,
     fontWeight: '700',
   },
   tanggal: {
-    color: '#71817D',
-    fontSize: 12,
+    color: colors.body,
+    fontSize: font.small,
     marginTop: 3,
   },
   barisKanan: {
     alignItems: 'flex-end',
   },
   zScore: {
-    fontSize: 13,
+    fontSize: font.body,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   perubahan: {
-    fontSize: 12.5,
+    fontSize: font.small,
     fontVariant: ['tabular-nums'],
     marginTop: 3,
   },
   catatanCard: {
-    color: '#63736F',
-    fontSize: 12.5,
+    color: colors.body,
+    fontSize: font.small,
     lineHeight: 19,
     marginTop: 8,
   },
   catatanKaki: {
-    color: '#63736F',
-    fontSize: 11.5,
+    color: colors.body,
+    fontSize: font.micro,
     lineHeight: 17,
     marginTop: 14,
   },
   emptyTitle: {
-    color: '#16332E',
-    fontSize: 17,
+    color: colors.ink,
+    fontSize: font.title,
     fontWeight: '700',
     textAlign: 'center',
   },
   emptyText: {
-    color: '#63736F',
-    fontSize: 13,
+    color: colors.body,
+    fontSize: font.body,
     lineHeight: 20,
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: '#167D68',
-    borderRadius: 10,
+    backgroundColor: colors.brand,
+    borderRadius: radius.inner,
     marginTop: 4,
     paddingHorizontal: 18,
     paddingVertical: 11,
   },
   retryText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: colors.onBrand,
+    fontSize: font.body,
     fontWeight: '700',
   },
 });

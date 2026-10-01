@@ -9,10 +9,24 @@ import {
   View,
 } from 'react-native';
 
+import Chip from '../components/Chip';
 import Disclaimer from '../components/Disclaimer';
 import { BASE_URL } from '../config/api';
-import { buildDailySummary } from '../utils/dailySummary';
+import { TAB_BAR_CLEARANCE } from '../config/layout';
+import { colors, font, radius } from '../config/theme';
+import { URUTAN, URUTAN_BAWAAN, urutkanBank } from '../utils/bankSort';
+import { buildDailyChips } from '../utils/dailySummary';
+import { rupiahSingkat } from '../utils/rupiah';
 import { changeTone, scoreTone } from '../utils/scoreTone';
+
+// Warna tiap potongan ringkasan. Nama perannya datang dari utils, warnanya
+// ditentukan di sini supaya berkas itu tetap tidak tahu-menahu soal tema.
+const WARNA_RINGKASAN = {
+  brand: colors.brand,
+  naik: colors.up,
+  netral: colors.body,
+  turun: colors.down,
+};
 
 export default function HomeScreen({ navigation }) {
   const [banks, setBanks] = useState([]);
@@ -20,6 +34,7 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [urutan, setUrutan] = useState(URUTAN_BAWAAN);
 
   useEffect(() => {
     let isMounted = true;
@@ -71,14 +86,18 @@ export default function HomeScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#167D68" />
+        <ActivityIndicator size="large" color={colors.brand} />
         <Text style={styles.loadingText}>Memuat data bank...</Text>
       </View>
     );
   }
 
   const scoreBySymbol = new Map(scores.map((item) => [item.symbol, item]));
-  const ringkasan = buildDailySummary(banks, scores);
+  const ringkasan = buildDailyChips(banks, scores);
+
+  // Semua pilihan urutan menurun dan bank tanpa data selalu jatuh ke bawah;
+  // aturannya ada di utils/bankSort.js supaya bisa diuji terpisah.
+  const bankTerurut = urutkanBank(banks, urutan, scores);
 
   // Backend membatasi riwayat anomali tiap bank, jadi angka ini adalah jumlah
   // temuan yang dikirim, bukan jumlah seluruh anomali yang pernah terjadi.
@@ -92,13 +111,18 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.heading}>
         <Text style={styles.eyebrow}>PASAR SAHAM INDONESIA</Text>
         <Text style={styles.title}>Bank pilihan</Text>
-        <Text style={styles.subtitle}>Harga, perubahan harian, dan skor relatif</Text>
+        <Text style={styles.subtitle}>Harga, perubahan, ukuran, dan skor relatif</Text>
       </View>
 
-      {ringkasan ? (
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>RINGKASAN HARI INI</Text>
-          <Text style={styles.summaryText}>{ringkasan}</Text>
+      {ringkasan.length > 0 ? (
+        <View style={styles.ringkasanBaris}>
+          {ringkasan.map((potongan) => (
+            <View key={potongan.key} style={styles.ringkasanChip}>
+              <Text style={[styles.ringkasanTeks, { color: WARNA_RINGKASAN[potongan.tone] }]}>
+                {potongan.label}
+              </Text>
+            </View>
+          ))}
         </View>
       ) : null}
 
@@ -116,6 +140,21 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       ) : null}
 
+      {banks.length > 0 ? (
+        <View style={styles.urutanBaris}>
+          <Text style={styles.urutanLabel}>URUTKAN</Text>
+          {URUTAN.map((pilihan) => (
+            <Chip
+              key={pilihan.kunci}
+              padat
+              aktif={urutan === pilihan.kunci}
+              label={pilihan.label}
+              onPress={() => setUrutan(pilihan.kunci)}
+            />
+          ))}
+        </View>
+      ) : null}
+
       {banks.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>{error ? 'Koneksi belum tersedia' : 'Belum ada data bank'}</Text>
@@ -125,7 +164,7 @@ export default function HomeScreen({ navigation }) {
           </Pressable>
         </View>
       ) : (
-        banks.map((bank) => {
+        bankTerurut.map((bank) => {
           const change = bank.daily_close_change;
           const displaySymbol = String(bank.symbol ?? '').replace(/\.JK$/i, '');
           const changeColor = changeTone(change);
@@ -168,23 +207,12 @@ export default function HomeScreen({ navigation }) {
                     : `Rp ${Number(bank.last_close_price).toLocaleString('id-ID')}`}
                 </Text>
                 <Text style={[styles.change, { color: changeColor }]}>{changeLabel}</Text>
+                <Text style={styles.marketCap}>Kap {rupiahSingkat(bank.market_cap)}</Text>
               </View>
             </TouchableOpacity>
           );
         })
       )}
-
-      <Pressable style={styles.rankingButton} onPress={() => navigation.navigate('Ranking')}>
-        <Text style={styles.rankingButtonText}>Lihat ranking harian</Text>
-      </Pressable>
-
-      <Pressable style={styles.sectorButton} onPress={() => navigation.navigate('Sector')}>
-        <Text style={styles.sectorButtonText}>Lihat kondisi sektor</Text>
-      </Pressable>
-
-      <Pressable style={styles.sectorButton} onPress={() => navigation.navigate('Anomali')}>
-        <Text style={styles.sectorButtonText}>Pantauan anomali</Text>
-      </Pressable>
 
       <Disclaimer />
     </ScrollView>
@@ -194,7 +222,7 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: TAB_BAR_CLEARANCE,
     gap: 12,
   },
   centered: {
@@ -204,55 +232,66 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    color: '#63736F',
-    fontSize: 14,
+    color: colors.body,
+    fontSize: font.body,
   },
   heading: {
     marginTop: 8,
     marginBottom: 12,
   },
   eyebrow: {
-    color: '#167D68',
-    fontSize: 11,
+    color: colors.brand,
+    fontSize: font.micro,
     fontWeight: '700',
     letterSpacing: 1.2,
   },
   title: {
-    color: '#16332E',
-    fontSize: 28,
+    color: colors.ink,
+    fontSize: font.screenTitle,
     fontWeight: '700',
     marginTop: 6,
   },
   subtitle: {
-    color: '#63736F',
-    fontSize: 14,
+    color: colors.body,
+    fontSize: font.body,
     marginTop: 4,
   },
-  summaryCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE9',
-    borderLeftColor: '#167D68',
-    borderLeftWidth: 3,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
+  // Deretan potongan pendek, bukan kartu berisi paragraf. Tingginya mengikuti
+  // isinya, dan sisi yang jumlahnya nol tidak muncul sama sekali.
+  ringkasanBaris: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  summaryLabel: {
-    color: '#167D68',
-    fontSize: 10.5,
+  ringkasanChip: {
+    backgroundColor: colors.chip,
+    borderRadius: radius.pill,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  ringkasanTeks: {
+    fontSize: font.small,
+    fontWeight: '600',
+  },
+  // Pemilih urutan. Sengaja bukan kartu: ia pengatur tampilan daftar di
+  // bawahnya, jadi tingginya harus tetap rendah agar daftarnya sendiri tidak
+  // terdorong turun dari layar.
+  urutanBaris: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  urutanLabel: {
+    color: colors.faint,
+    fontSize: font.micro,
     fontWeight: '700',
-    letterSpacing: 1.1,
-  },
-  summaryText: {
-    color: '#16332E',
-    fontSize: 13.5,
-    lineHeight: 21,
-    marginTop: 8,
+    letterSpacing: 1,
   },
   alertCard: {
     alignItems: 'center',
-    backgroundColor: '#FBEEE9',
-    borderRadius: 14,
+    backgroundColor: colors.alertSoft,
+    borderRadius: radius.card,
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
@@ -262,25 +301,25 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   alertJudul: {
-    color: '#B4472F',
-    fontSize: 14,
+    color: colors.alert,
+    fontSize: font.body,
     fontWeight: '700',
   },
   alertTeks: {
-    color: '#63736F',
-    fontSize: 12,
+    color: colors.body,
+    fontSize: font.small,
     marginTop: 3,
   },
   alertTautan: {
-    color: '#B4472F',
-    fontSize: 13,
+    color: colors.alert,
+    fontSize: font.body,
     fontWeight: '700',
   },
   card: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE9',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.card,
     borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -290,59 +329,35 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE9',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.card,
     borderWidth: 1,
     gap: 10,
     padding: 24,
   },
   emptyTitle: {
-    color: '#16332E',
-    fontSize: 17,
+    color: colors.ink,
+    fontSize: font.title,
     fontWeight: '700',
     textAlign: 'center',
   },
   emptyText: {
-    color: '#63736F',
-    fontSize: 13,
+    color: colors.body,
+    fontSize: font.body,
     lineHeight: 20,
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: '#167D68',
-    borderRadius: 10,
+    backgroundColor: colors.brand,
+    borderRadius: radius.inner,
     marginTop: 4,
     paddingHorizontal: 18,
     paddingVertical: 11,
   },
   retryText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  rankingButton: {
-    alignItems: 'center',
-    backgroundColor: '#167D68',
-    borderRadius: 12,
-    marginTop: 8,
-    paddingVertical: 15,
-  },
-  rankingButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  sectorButton: {
-    alignItems: 'center',
-    borderColor: '#167D68',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    paddingVertical: 14,
-  },
-  sectorButtonText: {
-    color: '#167D68',
-    fontSize: 15,
+    color: colors.onBrand,
+    fontSize: font.body,
     fontWeight: '700',
   },
   bankInfo: {
@@ -350,26 +365,35 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   symbol: {
-    color: '#16332E',
-    fontSize: 18,
+    color: colors.ink,
+    fontSize: font.title,
     fontWeight: '700',
   },
   companyName: {
-    color: '#71817D',
-    fontSize: 12,
+    color: colors.body,
+    fontSize: font.small,
     marginTop: 4,
   },
   priceInfo: {
     alignItems: 'flex-end',
   },
   price: {
-    color: '#203D37',
-    fontSize: 15,
+    color: colors.ink,
+    fontSize: font.strong,
     fontWeight: '600',
   },
   change: {
-    fontSize: 13,
+    fontSize: font.body,
     fontWeight: '700',
+    marginTop: 5,
+  },
+  // Ukuran bank, ditulis singkat karena satuannya triliunan. "Kap" dipakai
+  // sebagai awalan, bukan "Kapitalisasi pasar", supaya kolom kanan tetap
+  // muat tanpa membuat kartunya melebar.
+  marketCap: {
+    color: colors.faint,
+    fontSize: font.micro,
+    fontVariant: ['tabular-nums'],
     marginTop: 5,
   },
   badgeRow: {
@@ -379,24 +403,24 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   scorePill: {
-    borderRadius: 6,
+    borderRadius: radius.small,
     borderWidth: 1,
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
   scorePillText: {
-    fontSize: 11,
+    fontSize: font.micro,
     fontWeight: '700',
   },
   anomalyPill: {
-    backgroundColor: '#FBEEE9',
-    borderRadius: 6,
+    backgroundColor: colors.alertSoft,
+    borderRadius: radius.small,
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
   anomalyPillText: {
-    color: '#B4472F',
-    fontSize: 11,
+    color: colors.alert,
+    fontSize: font.micro,
     fontWeight: '700',
   },
 });

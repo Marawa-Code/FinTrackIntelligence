@@ -11,6 +11,9 @@ import {
 
 import Disclaimer from '../components/Disclaimer';
 import { BASE_URL } from '../config/api';
+import { TAB_BAR_CLEARANCE } from '../config/layout';
+import { colors, font, radius } from '../config/theme';
+import { rupiahSingkat } from '../utils/rupiah';
 import { changeTone } from '../utils/scoreTone';
 
 // Backend mengirim semua rasio sebagai pecahan, bukan persen.
@@ -23,25 +26,19 @@ const persen = (pecahan, desimal = 2) =>
         { minimumFractionDigits: desimal, maximumFractionDigits: desimal },
       )}%`;
 
-// Kapitalisasi dan laba di laporan sektor berskala triliunan, jadi angkanya
-// ditulis singkat. Rupiah penuh hanya dipakai untuk nilai di bawah miliar.
-const rupiahSingkat = (nilai) => {
-  const angka = Number(nilai);
-  if (nilai == null || !Number.isFinite(angka)) return '—';
-
-  const singkat = (pembagi, satuan) =>
-    `Rp ${(angka / pembagi).toLocaleString('id-ID', { maximumFractionDigits: 1 })} ${satuan}`;
-
-  if (Math.abs(angka) >= 1e12) return singkat(1e12, 'T');
-  if (Math.abs(angka) >= 1e9) return singkat(1e9, 'M');
-  return `Rp ${angka.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`;
-};
-
 const teksNilai = (baris, format) =>
   format === 'persen' ? persen(baris.value) : rupiahSingkat(baris.value);
 
 const warnaNilai = (baris, format) =>
-  format === 'persen' ? changeTone(baris.value) : '#16332E';
+  format === 'persen' ? changeTone(baris.value) : colors.ink;
+
+/** Pangsa sebuah nilai terhadap total sektor, dalam persen. */
+const pangsaSektor = (nilai, total) => {
+  const angka = Number(nilai);
+  const jumlah = Number(total);
+  if (!Number.isFinite(angka) || !Number.isFinite(jumlah) || jumlah <= 0) return null;
+  return Math.max(0, Math.min(100, (angka / jumlah) * 100));
+};
 
 export default function SectorScreen({ navigation }) {
   const [sektor, setSektor] = useState(null);
@@ -85,7 +82,7 @@ export default function SectorScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#167D68" />
+        <ActivityIndicator size="large" color={colors.brand} />
         <Text style={styles.loadingText}>Memuat laporan sektor...</Text>
       </View>
     );
@@ -167,31 +164,65 @@ export default function SectorScreen({ navigation }) {
       {papan.map((board) => (
         <View key={board.key} style={styles.card}>
           <Text style={styles.judulCard}>{board.title.toUpperCase()}</Text>
-          {board.rows.map((baris, index) => (
-            <TouchableOpacity
-              key={baris.symbol}
-              disabled={!baris.tracked}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('Detail', { symbol: baris.symbol })}
-              style={[styles.barisPapan, index > 0 && styles.barisTerpisah]}
-            >
-              <Text style={[styles.peringkat, baris.tracked && styles.peringkatAktif]}>
-                {index + 1}
-              </Text>
-              <View style={styles.papanTengah}>
-                <Text style={styles.papanSimbol}>{baris.symbol}</Text>
-                <Text style={styles.papanNama} numberOfLines={1}>
-                  {baris.name ?? '—'}
-                </Text>
-              </View>
-              <View style={styles.papanKanan}>
-                <Text style={[styles.papanNilai, { color: warnaNilai(baris, board.format) }]}>
-                  {teksNilai(baris, board.format)}
-                </Text>
-                {baris.tracked ? <Text style={styles.papanTautan}>Detail</Text> : null}
-              </View>
-            </TouchableOpacity>
-          ))}
+          {board.rows.map((baris, index) => {
+            // Hanya papan kapitalisasi yang punya angka pembanding di tingkat
+            // sektor. Papan lain membandingkan laba, pendapatan, atau
+            // pertumbuhan, yang totalnya tidak dikirim backend.
+            const pangsa =
+              board.key === 'top_mcap' ? pangsaSektor(baris.value, modal.total) : null;
+
+            return (
+              <TouchableOpacity
+                key={baris.symbol}
+                disabled={!baris.tracked}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Detail', { symbol: baris.symbol })}
+                style={[styles.barisPapan, index > 0 && styles.barisTerpisah]}
+              >
+                <View style={styles.barisPapanAtas}>
+                  <Text style={[styles.peringkat, baris.tracked && styles.peringkatAktif]}>
+                    {index + 1}
+                  </Text>
+                  <View style={styles.papanTengah}>
+                    <Text style={styles.papanSimbol}>{baris.symbol}</Text>
+                    <Text style={styles.papanNama} numberOfLines={1}>
+                      {baris.name ?? '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.papanKanan}>
+                    <Text style={[styles.papanNilai, { color: warnaNilai(baris, board.format) }]}>
+                      {teksNilai(baris, board.format)}
+                    </Text>
+                    {baris.tracked ? <Text style={styles.papanTautan}>Detail</Text> : null}
+                  </View>
+                </View>
+
+                {pangsa == null ? null : (
+                  <View style={styles.pangsaBaris}>
+                    <View style={styles.pangsaAlur}>
+                      <View
+                        style={[
+                          styles.pangsaIsi,
+                          baris.tracked && styles.pangsaIsiAktif,
+                          { width: `${pangsa}%` },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.pangsaTeks}>
+                      {pangsa.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          {board.key === 'top_mcap' ? (
+            <Text style={styles.catatanCard}>
+              Persentase dihitung terhadap kapitalisasi seluruh subsektor, bukan terhadap lima
+              baris di atas. Karena itu kelimanya tidak berjumlah 100%, dan sisanya dipegang bank
+              yang tidak ikut ditampilkan.
+            </Text>
+          ) : null}
         </View>
       ))}
 
@@ -209,7 +240,7 @@ export default function SectorScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: TAB_BAR_CLEARANCE,
   },
   centered: {
     alignItems: 'center',
@@ -219,51 +250,51 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   loadingText: {
-    color: '#63736F',
-    fontSize: 14,
+    color: colors.body,
+    fontSize: font.body,
   },
   eyebrow: {
-    color: '#167D68',
-    fontSize: 11,
+    color: colors.brand,
+    fontSize: font.micro,
     fontWeight: '700',
     letterSpacing: 1.2,
     marginTop: 8,
   },
   title: {
-    color: '#16332E',
-    fontSize: 28,
+    color: colors.ink,
+    fontSize: font.screenTitle,
     fontWeight: '700',
     marginTop: 6,
   },
   subtitle: {
-    color: '#63736F',
-    fontSize: 14,
+    color: colors.body,
+    fontSize: font.body,
     marginTop: 4,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5ECE9',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.card,
     borderWidth: 1,
     marginTop: 14,
     padding: 18,
   },
   judulCard: {
-    color: '#63736F',
-    fontSize: 11,
+    color: colors.body,
+    fontSize: font.micro,
     fontWeight: '700',
     letterSpacing: 1,
     marginBottom: 14,
   },
   angkaBesar: {
-    color: '#16332E',
-    fontSize: 32,
+    color: colors.ink,
+    fontSize: font.displayLg,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   catatanKecil: {
-    color: '#63736F',
-    fontSize: 12,
+    color: colors.body,
+    fontSize: font.small,
     marginTop: 4,
   },
   barisMeta: {
@@ -272,58 +303,91 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   barisPertama: {
-    borderTopColor: '#E5ECE9',
+    borderTopColor: colors.border,
     borderTopWidth: 1,
     marginTop: 14,
     paddingTop: 14,
   },
   metaKunci: {
-    color: '#63736F',
-    fontSize: 13,
+    color: colors.body,
+    fontSize: font.body,
   },
   metaNilai: {
-    color: '#16332E',
-    fontSize: 13,
+    color: colors.ink,
+    fontSize: font.body,
     fontVariant: ['tabular-nums'],
     fontWeight: '600',
   },
   catatanCard: {
-    color: '#63736F',
-    fontSize: 11.5,
+    color: colors.body,
+    fontSize: font.micro,
     lineHeight: 17,
     marginTop: 14,
   },
   barisPapan: {
+    gap: 6,
+    paddingVertical: 9,
+  },
+  barisPapanAtas: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
-    paddingVertical: 9,
+  },
+  pangsaBaris: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    // Sejajar dengan nama bank, bukan dengan nomor peringkat: lebar nomor 14
+    // ditambah jarak antar kolom 12.
+    paddingLeft: 26,
+  },
+  pangsaAlur: {
+    backgroundColor: colors.chip,
+    borderRadius: radius.bar,
+    flex: 1,
+    height: 4,
+    overflow: 'hidden',
+  },
+  pangsaIsi: {
+    backgroundColor: colors.faint,
+    borderRadius: radius.bar,
+    height: '100%',
+  },
+  pangsaIsiAktif: {
+    backgroundColor: colors.brand,
+  },
+  pangsaTeks: {
+    color: colors.faint,
+    fontSize: font.micro,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'right',
+    width: 46,
   },
   barisTerpisah: {
-    borderTopColor: '#E5ECE9',
+    borderTopColor: colors.border,
     borderTopWidth: 1,
   },
   peringkat: {
-    color: '#A9B6B2',
-    fontSize: 13,
+    color: colors.faint,
+    fontSize: font.body,
     fontVariant: ['tabular-nums'],
     fontWeight: '700',
     width: 14,
   },
   peringkatAktif: {
-    color: '#167D68',
+    color: colors.brand,
   },
   papanTengah: {
     flex: 1,
   },
   papanSimbol: {
-    color: '#16332E',
-    fontSize: 14.5,
+    color: colors.ink,
+    fontSize: font.body,
     fontWeight: '700',
   },
   papanNama: {
-    color: '#71817D',
-    fontSize: 11.5,
+    color: colors.body,
+    fontSize: font.micro,
     marginTop: 2,
   },
   papanKanan: {
@@ -331,44 +395,44 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
   },
   papanNilai: {
-    fontSize: 13.5,
+    fontSize: font.body,
     fontVariant: ['tabular-nums'],
     fontWeight: '700',
   },
   papanTautan: {
-    color: '#167D68',
-    fontSize: 10.5,
+    color: colors.brand,
+    fontSize: font.micro,
     fontWeight: '700',
     marginTop: 2,
   },
   catatanKaki: {
-    color: '#63736F',
-    fontSize: 11.5,
+    color: colors.body,
+    fontSize: font.micro,
     lineHeight: 17,
     marginTop: 14,
   },
   emptyTitle: {
-    color: '#16332E',
-    fontSize: 17,
+    color: colors.ink,
+    fontSize: font.title,
     fontWeight: '700',
     textAlign: 'center',
   },
   emptyText: {
-    color: '#63736F',
-    fontSize: 13,
+    color: colors.body,
+    fontSize: font.body,
     lineHeight: 20,
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: '#167D68',
-    borderRadius: 10,
+    backgroundColor: colors.brand,
+    borderRadius: radius.inner,
     marginTop: 4,
     paddingHorizontal: 18,
     paddingVertical: 11,
   },
   retryText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: colors.onBrand,
+    fontSize: font.body,
     fontWeight: '700',
   },
 });
