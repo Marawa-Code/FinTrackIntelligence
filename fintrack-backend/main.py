@@ -1,3 +1,4 @@
+import json
 import math
 import statistics
 from datetime import date, timedelta
@@ -8,8 +9,9 @@ from typing import Any
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from config import CORS_ALLOWED_ORIGINS, SECTORS_API_KEY
+from config import CORS_ALLOWED_ORIGINS, OPENROUTER_API_KEY, SECTORS_API_KEY
 
 app = FastAPI(title="FinTrack Intelligence API")
 
@@ -18,10 +20,14 @@ app = FastAPI(title="FinTrack Intelligence API")
 # diblokir tanpa middleware ini. Backend hanya menyajikan data pasar publik,
 # tanpa cookie maupun kredensial, jadi origin dibuka lebar secara sadar
 # (allow_credentials dibiarkan False, syarat wajib bila origin "*").
+#
+# POST ikut didaftarkan karena endpoint /api/chat menerima pertanyaan lewat
+# badan permintaan. Tanpa itu, demo di browser gagal pada preflight walaupun
+# endpointnya sendiri sehat.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOWED_ORIGINS,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -1151,3 +1157,151 @@ def get_sector_banks() -> dict[str, object]:
     _set_cached("sector:banks", payload, SECTOR_CACHE_TTL_SECONDS)
 
     return payload
+
+
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Model gratis dipilih supaya demo tidak memakai kredit berbayar. Delapan
+# miliar parameter cukup untuk merangkai ulang data yang sudah diringkas di
+# bawah; yang dibutuhkan model di sini bukan pengetahuan, melainkan kepatuhan
+# pada batasan di system prompt.
+OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+
+# Model gratis bisa mengantre saat ramai, jadi tenggatnya lebih longgar
+# daripada permintaan ke Sectors.
+OPENROUTER_TIMEOUT_SECONDS = 30
+
+MAX_QUESTION_LENGTH = 500
+
+DISCLAIMER = "Ini bukan nasihat investasi"
+
+# Batasan di bawah ini adalah bagian dari kepatuhan pada aturan lomba: jawaban
+# tidak boleh menjadi rekomendasi investasi dan tidak boleh keluar dari topik
+# keempat bank. Karena itu aturannya ditulis eksplisit, bukan disiratkan.
+CHAT_SYSTEM_PROMPT = """\
+Anda asisten FinTrack Intelligence. Anda hanya membahas empat bank yang datanya \
+diberikan di bawah: BBCA, BBRI, BMRI, dan BBNI.
+
+Aturan yang tidak boleh dilanggar:
+1. Jawab HANYA berdasarkan data yang diberikan. Jangan menambah angka, harga, \
+peristiwa, atau berita apa pun dari luar data itu. Kalau data yang diberikan \
+tidak memuat jawabannya, katakan terus terang bahwa datanya tidak tersedia.
+2. Jangan pernah menyarankan beli, jual, atau tahan, dan jangan memberi saran \
+investasi dalam bentuk apa pun. Bila diminta, tolak dengan singkat lalu \
+tawarkan menjelaskan datanya saja.
+3. Jangan menjawab pertanyaan di luar topik keempat bank tersebut. Bila \
+pertanyaannya di luar topik, katakan bahwa Anda hanya membahas keempat bank \
+itu.
+4. Akhiri setiap jawaban dengan kalimat persis: "{disclaimer}"
+
+Jawab dalam bahasa Indonesia, ringkas dan langsung ke intinya. Sebut angka \
+dari data bila relevan.""".format(disclaimer=DISCLAIMER)
+
+
+class ChatRequest(BaseModel):
+    question: str
+
+
+def _chat_context() -> str:
+    """Data yang dijadikan pijakan jawaban model.
+
+    Keduanya dipanggil sebagai fungsi Python, bukan lewat HTTP ke diri
+    sendiri: server ini tidak selalu punya alamat yang bisa dihubungi dari
+    dalam dirinya sendiri, dan memanggil lewat jaringan hanya menambah satu
+    perjalanan bolak-balik yang bisa gagal sendiri. Efek sampingnya
+    menguntungkan — cache yang sudah ada ikut terpakai, jadi percakapan tidak
+    memanggil ulang Sectors tiap kali ada pertanyaan.
+    """
+    ringkasan = get_banks_summary()
+    peringkat = get_banks_ranking()
+
+    return (
+        "RINGKASAN BANK (dari /api/banks/summary):\n"
+        f"{json.dumps(ringkasan, ensure_ascii=False, indent=2)}\n\n"
+        "PERINGKAT BANK (dari /api/banks/ranking):\n"
+        f"{json.dumps(peringkat, ensure_ascii=False, indent=2)}"
+    )
+
+
+def _dengan_disclaimer(jawaban: str) -> str:
+    """Memastikan kalimat penutup selalu ada.
+
+    Model delapan miliar parameter bisa lupa mematuhi satu dari empat aturan,
+    dan aturan penutup ini yang paling mudah terlewat karena isinya bukan
+    jawaban. Karena itu penutupnya dijamin di sini, bukan diserahkan pada
+    kepatuhan model. Kalau model sudah menulisnya sendiri, tidak ditambahkan
+    dua kali.
+    """
+    teks = jawaban.strip()
+    if DISCLAIMER.lower() in teks.lower():
+        return teks
+    return f"{teks}\n\n{DISCLAIMER}"
+
+
+@app.post("/api/chat")
+def post_chat(payload: ChatRequest) -> dict[str, str]:
+    """Menjawab pertanyaan tentang keempat bank berdasarkan data yang ada."""
+    pertanyaan = payload.question.strip()
+    if not pertanyaan:
+        raise HTTPException(status_code=422, detail="Pertanyaan tidak boleh kosong.")
+    if len(pertanyaan) > MAX_QUESTION_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Pertanyaan terlalu panjang (maksimal {MAX_QUESTION_LENGTH} karakter).",
+        )
+
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="OPENROUTER_API_KEY belum dikonfigurasi di file .env.",
+        )
+
+    konteks = _chat_context()
+
+    try:
+        response = requests.post(
+            OPENROUTER_API_URL,
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+            json={
+                "model": OPENROUTER_MODEL,
+                "messages": [
+                    {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": f"{konteks}\n\nPERTANYAAN PENGGUNA:\n{pertanyaan}",
+                    },
+                ],
+                # Suhu rendah supaya jawabannya berpijak pada data yang
+                # diberikan, bukan mengarang kalimat yang terdengar masuk akal.
+                "temperature": 0.2,
+            },
+            timeout=OPENROUTER_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        hasil = response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"OpenRouter tidak dapat dihubungi: {exc}",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Jawaban OpenRouter bukan JSON yang sah.",
+        ) from exc
+
+    pilihan = hasil.get("choices")
+    if not isinstance(pilihan, list) or not pilihan:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenRouter tidak mengirim pilihan jawaban.",
+        )
+
+    pesan = pilihan[0].get("message") or {}
+    jawaban = pesan.get("content")
+    if not isinstance(jawaban, str) or not jawaban.strip():
+        raise HTTPException(
+            status_code=502,
+            detail="OpenRouter mengirim jawaban kosong.",
+        )
+
+    return {"answer": _dengan_disclaimer(jawaban)}

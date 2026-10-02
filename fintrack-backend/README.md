@@ -50,6 +50,11 @@ Jika tidak dapat diakses, pastikan firewall Windows mengizinkan koneksi Python/U
 | `GET /api/banks/{symbol}/history?start=&end=` | OHLC harian per emiten |
 | `GET /api/banks/ranking` | Peringkat harian sederhana berdasarkan perubahan harga |
 | `GET /api/banks/intelligence` | Skor komposit 0–100, MA7/MA30, tren, volatilitas, sinyal & riwayat anomali |
+| `POST /api/chat` | Tanya jawab tentang keempat bank, dijawab model lewat OpenRouter |
+
+`POST /api/chat` menerima `{ "question": "..." }` dan mengembalikan
+`{ "answer": "..." }`. Butuh `OPENROUTER_API_KEY` di `.env`; tanpa kunci itu
+endpointnya menjawab 503.
 
 ## Skor komposit dan sinyal anomali
 
