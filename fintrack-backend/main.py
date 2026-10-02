@@ -1160,15 +1160,24 @@ def get_sector_banks() -> dict[str, object]:
 
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Model gratis dipilih supaya demo tidak memakai kredit berbayar. Delapan
-# miliar parameter cukup untuk merangkai ulang data yang sudah diringkas di
-# bawah; yang dibutuhkan model di sini bukan pengetahuan, melainkan kepatuhan
-# pada batasan di system prompt.
-OPENROUTER_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+# Model gratis dipilih supaya demo tidak memakai kredit berbayar. Yang
+# dibutuhkan model di sini bukan pengetahuan luas, melainkan kepatuhan pada
+# batasan di system prompt dan kemampuan merangkai ulang data yang sudah
+# diringkas di bawah.
+#
+# Nemotron 3 Ultra adalah model penalaran: ia menyusun langkah berpikir lebih
+# dulu sebelum menjawab, jadi jawabannya lebih lama datang daripada model
+# biasa. Ini yang membuat tenggat di bawah perlu longgar.
+OPENROUTER_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
-# Model gratis bisa mengantre saat ramai, jadi tenggatnya lebih longgar
-# daripada permintaan ke Sectors.
-OPENROUTER_TIMEOUT_SECONDS = 30
+# Model gratis bisa mengantre saat ramai, dan model penalaran menambah waktu
+# berpikir di atasnya. Karena itu tenggatnya jauh lebih longgar daripada
+# permintaan ke Sectors.
+#
+# Aplikasi mobile harus memakai tenggat yang lebih panjang dari angka ini.
+# Kalau sisi aplikasi menyerah lebih dulu, pengguna melihat galat sambungan
+# padahal backendnya masih menunggu jawaban yang sebenarnya akan datang.
+OPENROUTER_TIMEOUT_SECONDS = 60
 
 MAX_QUESTION_LENGTH = 500
 
