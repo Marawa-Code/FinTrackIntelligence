@@ -1,13 +1,13 @@
 import { Circle, Path, Rect, Svg } from 'react-native-svg';
 
 /**
- * Empat ikon bilah tab, digambar sendiri dengan react-native-svg yang sudah
- * dipakai grafik di layar Detail.
+ * Ikon bilah tab, digambar sendiri dengan react-native-svg yang sudah dipakai
+ * grafik di layar Detail.
  *
  * Pustaka ikon sengaja tidak dipakai, karena dua hal: `@expo/vector-icons`
  * sudah tidak ikut terpasang bersama paket `expo` dan resminya ditandai akan
  * dihentikan, sedangkan React Navigation tetap menggambar lambang "ikon hilang"
- * kalau sebuah tab dibiarkan tanpa ikon. Menggambar empat bentuk di sini
+ * kalau sebuah tab dibiarkan tanpa ikon. Menggambar bentuknya di sini
  * menghindari keduanya sekaligus.
  */
 const STROKE = 1.8;
@@ -112,6 +112,22 @@ function Glyph({ name, color }) {
             strokeWidth={STROKE}
           />
           <Circle cx={12} cy={16.6} fill={color} r={0.9} />
+        </>
+      );
+    case 'chat':
+      // Balon percakapan dengan ekor di kiri bawah, lalu tiga titik isi.
+      return (
+        <>
+          <Path
+            d="M20.5 12.6c0 3.6-3.8 6.5-8.5 6.5-1 0-2-.1-2.9-.4L4.5 20.5l1-3.4C4.2 16 3.5 14.4 3.5 12.6c0-3.6 3.8-6.5 8.5-6.5s8.5 2.9 8.5 6.5z"
+            fill="none"
+            stroke={color}
+            strokeLinejoin="round"
+            strokeWidth={STROKE}
+          />
+          <Circle cx={8.6} cy={12.6} fill={color} r={0.85} />
+          <Circle cx={12} cy={12.6} fill={color} r={0.85} />
+          <Circle cx={15.4} cy={12.6} fill={color} r={0.85} />
         </>
       );
     default:

@@ -10,6 +10,7 @@ import TabIcon from './components/TabIcon';
 import { TAB_BAR_HEIGHT, TAB_BAR_RADIUS, TAB_FLOAT_GAP } from './config/layout';
 import { colors, font } from './config/theme';
 import AnomalyScreen from './screens/AnomalyScreen';
+import ChatScreen from './screens/ChatScreen';
 import CompareScreen from './screens/CompareScreen';
 import DetailScreen from './screens/DetailScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -28,8 +29,8 @@ const headerOptions = {
   headerTitleStyle: { color: colors.ink, fontWeight: '700' },
 };
 
-// Empat tujuan setingkat. Detail tidak masuk daftar ini karena ia rincian dari
-// sebuah bank, bukan tujuan yang berdiri sendiri.
+// Tujuan setingkat di bilah tab. Detail tidak masuk daftar ini karena ia
+// rincian dari sebuah bank, bukan tujuan yang berdiri sendiri.
 const TABS = [
   { component: HomeScreen, icon: 'bank', label: 'Bank', name: 'Bank', title: 'FinTrack' },
   {
@@ -52,6 +53,13 @@ const TABS = [
     label: 'Anomali',
     name: 'Anomali',
     title: 'Pantauan Anomali',
+  },
+  {
+    component: ChatScreen,
+    icon: 'chat',
+    label: 'Chat',
+    name: 'Chat',
+    title: 'Tanya Jawab',
   },
 ];
 
