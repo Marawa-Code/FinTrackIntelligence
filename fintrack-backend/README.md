@@ -4,6 +4,10 @@ Backend lokal FastAPI untuk mengambil ringkasan dan histori harga saham dari Sec
 
 ## Persiapan
 
+Persyaratannya **Python 3.10 atau lebih baru**: `main.py` memakai anotasi
+`str | None` tanpa `from __future__ import annotations`, dan FastAPI
+mengevaluasinya saat runtime, jadi di 3.9 aplikasinya gagal start.
+
 Jalankan perintah berikut dari PowerShell di folder proyek:
 
 ```powershell
@@ -13,13 +17,24 @@ py -m venv .venv
 pip install -r requirements.txt
 ```
 
-Buat file `.env` di folder `fintrack-backend/` dengan isi berikut, lalu ganti nilainya dengan API key Anda:
+Buat file `.env` di folder `fintrack-backend/` dengan **menyalin
+[`.env.example`](.env.example)**, lalu ganti nilainya dengan API key Anda.
+Isinya tiga variabel:
 
 ```env
 SECTORS_API_KEY=isi_dengan_api_key_anda
+OPENROUTER_API_KEY=isi_dengan_api_key_anda
+CORS_ALLOWED_ORIGINS=*
 ```
 
-Jangan commit file `.env`; file itu sudah diabaikan oleh Git.
+Tanpa `OPENROUTER_API_KEY` backend tetap berjalan dan seluruh endpoint pasar
+normal, tetapi `POST /api/chat` membalas `503`. `CORS_ALLOWED_ORIGINS` hanya
+perlu diubah bila ingin membatasi asal permintaan; nilai bawaannya `*` supaya
+demo lewat `expo start --web` jalan.
+
+Jangan commit file `.env`; file itu sudah diabaikan oleh Git. Kunci Sectors
+diambil dari API Playground di [sectors.app/api](https://sectors.app/api),
+kunci OpenRouter dari [openrouter.ai/keys](https://openrouter.ai/keys).
 
 ## Menjalankan backend
 
@@ -54,7 +69,7 @@ Jika tidak dapat diakses, pastikan firewall Windows mengizinkan koneksi Python/U
 | `GET /api/banks/score-trend` | Deret skor harian tiap bank pantauan untuk grafik |
 | `GET /api/sector/banks` | Ringkasan laporan subsektor perbankan |
 | `GET /api/sector/members` | Seluruh anggota subsektor, ditandai mana yang punya skor |
-| `POST /api/chat` | Tanya jawab tentang bank pantauan, dijawab model lewat OpenRouter |
+| `POST /api/chat` | Tanya jawab soal saham bank dan soal fitur aplikasi, dijawab model lewat OpenRouter |
 
 Daftar bank yang dipantau ada di `BANK_SYMBOLS` (`main.py`). Bank di luar
 daftar itu tetap bisa dibuka lewat `/history` dan `/profile`, tetapi **tidak

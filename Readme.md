@@ -7,11 +7,23 @@ Dashboard intelijen pasar lokal untuk membandingkan bank-bank IDX. Lima bank pan
 - `fintrack-backend/` — FastAPI yang menyimpan satu-satunya API key Sectors dan menyediakan cache in-memory 5 menit.
 - `fintrack-mobile/` — Expo React Native dengan tab Bank, Ranking, Sektor, Anomali, dan Chat, plus layar Detail Bank dan Adu Bank.
 
+## Prasyarat
+
+- **Python 3.10 atau lebih baru.** `main.py` memakai anotasi `str | None` tanpa `from __future__ import annotations`, dan FastAPI mengevaluasinya saat runtime — di 3.9 aplikasinya gagal start.
+- **Node 20 atau lebih baru**, untuk Expo SDK 57 dan React Native 0.86.
+- **Expo Go** di HP, bila ingin menjalankan versi mobile.
+- **Dua kunci API.** Keduanya hanya dipakai backend; tidak satu pun boleh masuk ke aplikasi mobile.
+  - **Sectors** — buat akun di [sectors.app](https://sectors.app), lalu ambil kuncinya dari API Playground di [sectors.app/api](https://sectors.app/api).
+  - **OpenRouter** — [openrouter.ai/keys](https://openrouter.ai/keys).
+
 ## Menjalankan lokal
 
 ### Backend
 
-Ikuti instruksi lengkap di [README backend](fintrack-backend/README.md). Buat `fintrack-backend/.env` berisi `SECTORS_API_KEY=<api-key-anda>`, lalu jalankan backend pada port `8000` dengan host `0.0.0.0`.
+Ikuti instruksi lengkap di [README backend](fintrack-backend/README.md). Dua hal yang paling mudah terlewat:
+
+- Buat `fintrack-backend/.env` dengan menyalin [`.env.example`](fintrack-backend/.env.example), bukan menulisnya dari nol. Isinya tiga variabel: `SECTORS_API_KEY`, `OPENROUTER_API_KEY`, dan `CORS_ALLOWED_ORIGINS`. Tanpa `OPENROUTER_API_KEY` backend tetap berjalan, tetapi `POST /api/chat` membalas `503`.
+- Jalankan backend pada port `8000` dengan host `0.0.0.0`, supaya bisa dijangkau HP lewat Wi-Fi.
 
 Endpoint utama:
 
@@ -24,11 +36,11 @@ Endpoint utama:
 - `GET /api/banks/score-trend` — deret skor harian untuk grafik
 - `GET /api/sector/banks` — laporan subsektor perbankan
 - `GET /api/sector/members` — seluruh anggota subsektor dan status pantauannya
-- `POST /api/chat` — tanya jawab lewat OpenRouter
+- `POST /api/chat` — tanya jawab soal saham bank dan soal fitur aplikasi, dijawab model lewat OpenRouter
 
 ### Mobile
 
-Ikuti [panduan aplikasi mobile](fintrack-mobile/README.md). Atur `BASE_URL` di `fintrack-mobile/config/api.js` ke IPv4 Wi-Fi komputer, lalu jalankan Expo dan buka QR code dengan Expo Go pada HP yang memakai Wi-Fi sama.
+Ikuti [panduan aplikasi mobile](fintrack-mobile/README.md). Alamat backend tidak perlu diatur: `fintrack-mobile/config/api.js` menurunkannya sendiri dari alamat Metro yang sedang dipakai, jadi pindah Wi-Fi tidak menuntut perubahan apa pun. Jalankan Expo, lalu buka QR code dengan Expo Go pada HP yang memakai Wi-Fi sama.
 
 ## Data dan batasan
 
