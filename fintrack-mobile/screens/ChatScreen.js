@@ -13,6 +13,7 @@ import {
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TAB_BAR_HEIGHT } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
 import { ambilJson } from '../utils/ambil';
 import { pecahTebal } from '../utils/teksTebal';
@@ -83,15 +84,36 @@ export default function ChatScreen() {
 
   const papanKetikTerbuka = tinggiPapanKetik > 0;
 
+  // Tinggi bilah tab, sama persis dengan yang dipasang App.js: tinggi dasarnya
+  // ditambah inset bawah layar, yang dipakai bilah itu sebagai padding.
+  const tinggiBilahTab = TAB_BAR_HEIGHT + insets.bottom;
+
   // Dengan papan ketik tertutup, kolom ketik sudah berdiri tepat di atas bilah
   // tab — bilah itu menempel di dasar layar dan ikut mengambil ruang di dalam
   // susunan layar, bukan menumpuk di atas isinya. Jadi inset bawah layar sudah
   // diurus bilah tab, dan di sini cukup sedikit ruang napas.
   //
-  // Saat papan ketik muncul, ia menutupi bagian bawah layar berikut bilah
-  // tabnya, jadi jaraknya dihitung ulang dari ujung layar.
+  // Saat papan ketik muncul, kolomnya harus berhenti tepat di atas tepi papan
+  // ketik. Jarak itu diukur dari ujung layar, lalu dikurangi tinggi bilah tab.
+  //
+  // Pengurangannya yang mudah terlewat: dasar layar ini sudah terangkat
+  // setinggi bilah tab, karena bilahnya menempel dan ikut mengambil ruang.
+  // Tanpa dikurangi, kolomnya naik kelewat tinggi persis setinggi bilah tab —
+  // sekitar 88px di Android — dan yang terlihat adalah ruang kosong menganga
+  // di antara kolom ketik dan papan ketik.
+  //
+  // Angka di dalam tinggiPapanKetik berbeda asal antara dua platform, dan itu
+  // dijelaskan di useEffect di atas: di Android ia diukur dari bilah navigasi,
+  // jadi inset bawah ditambahkan dulu; di iOS sudah dari ujung layar.
+  //
+  // Penjaganya untuk papan ketik mengambang, yang tingginya bisa lebih pendek
+  // daripada bilah tab. Di situ kolomnya dibiarkan di tempatnya semula, bukan
+  // didorong turun sampai menutupi bilahnya.
+  const tepiPapanKetik =
+    tinggiPapanKetik + (Platform.OS === 'android' ? insets.bottom : 0);
+
   const jarakBawah = papanKetikTerbuka
-    ? tinggiPapanKetik + (Platform.OS === 'android' ? insets.bottom : 0) + 8
+    ? Math.max(8, tepiPapanKetik - tinggiBilahTab + 8)
     : 8;
 
   // Papan ketik yang muncul memakan ruang gulung, jadi pesan terakhir perlu
