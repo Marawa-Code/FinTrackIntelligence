@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -11,12 +11,11 @@ import {
   View,
 } from 'react-native';
 
-import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TAB_BAR_HEIGHT, TAB_FLOAT_GAP } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
 import { ambilJson } from '../utils/ambil';
+import { pecahTebal } from '../utils/teksTebal';
 
 // Backend menunggu jawaban model sampai 60 detik sebelum menyerah. Aplikasi
 // harus menunggu lebih lama daripada itu — kalau tidak, aplikasi menyerah lebih
@@ -25,9 +24,21 @@ import { ambilJson } from '../utils/ambil';
 // sekaligus menjadi batas atas kalau backendnya sendiri menggantung.
 const TENGGAT_CHAT_MS = 75000;
 
+// Cakupannya sengaja disebut "semua bank", bukan hanya kelima yang dilacak
+// penuh, karena sejak backend ikut mengirim daftar seluruh anggota subsektor
+// perbankan, pertanyaan soal bank lain memang terjawab — walau tanpa harga.
+// Menyebut kelimanya saja akan membuat pengguna mengira bank lain tidak ada.
+//
+// Daftar banknya ditulis di sini, bukan diambil dari backend, dan itu memang
+// duplikat dari BANK_SYMBOLS. Kalau daftarnya berubah di backend, baris ini
+// ikut berubah; kalau tidak, teksnya berbohong soal bank mana yang punya harga
+// lengkap — persis kesalahan yang paling sulit terlihat karena tidak ada satu
+// pun galat yang muncul.
 const PESAN_AWAL =
-  'Tanya apa saja soal keempat bank yang dipantau: BBCA, BBRI, BMRI, dan BBNI. ' +
-  'Jawabannya disusun dari data ringkasan dan peringkat terkini, bukan dari berita di luar itu.';
+  'Tanya apa saja soal saham bank di Bursa Efek Indonesia, termasuk yang di luar lima bank ' +
+  'pantauan: BBCA, BBRI, BMRI, BBNI, dan BNLI. Jawabannya disusun dari data ringkasan, ' +
+  'peringkat, dan papan peringkat terkini, bukan dari berita di luar itu. Lima bank pantauan ' +
+  'punya angka harga lengkap; bank lain baru sebatas peringkatnya.';
 
 export default function ChatScreen() {
   const [pesan, setPesan] = useState([{ dari: 'bot', id: 'awal', teks: PESAN_AWAL }]);
@@ -40,11 +51,56 @@ export default function ChatScreen() {
   const nomor = useRef(0);
 
   const insets = useSafeAreaInsets();
-  const tinggiKepala = useHeaderHeight();
+  const [tinggiPapanKetik, setTinggiPapanKetik] = useState(0);
 
-  // Bilah tab terapung di atas isi layar, jadi kolom ketik harus diberi jarak
-  // bawah sebesar tinggi bilah itu; tanpa ini kolomnya tertutup bilah.
-  const jarakBawah = insets.bottom + TAB_FLOAT_GAP + TAB_BAR_HEIGHT + 8;
+  // Tinggi papan ketik dibaca sendiri, bukan diserahkan ke KeyboardAvoidingView.
+  //
+  // Sejak edge-to-edge aktif di Android, jendela tidak lagi menyusut saat papan
+  // ketik muncul — Android mengabaikan adjustResize yang tertulis di manifes.
+  // KeyboardAvoidingView versi Android justru bergantung pada jendela yang
+  // menyusut itu, jadi dengan behavior apa pun ia menghitung nol dan diam saja;
+  // itulah sebabnya kolom ketik tertutup papan ketik.
+  //
+  // Peristiwa papan ketiknya sendiri tetap benar. Di Android, React Native
+  // melaporkan height sebagai imeInsets.bottom dikurangi barInsets.bottom —
+  // yaitu tinggi papan ketik di atas bilah navigasi, bukan dari ujung layar.
+  // Karena itu inset bawah ditambahkan kembali khusus di Android; kalau tidak,
+  // kolomnya tenggelam sedalam bilah navigasi. Di iOS height sudah dihitung
+  // dari ujung layar, jadi menambahkan inset di sana akan menggeser dua kali.
+  useEffect(() => {
+    const peristiwaTampil = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const peristiwaSembunyi = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const langganan = [
+      Keyboard.addListener(peristiwaTampil, (kejadian) => {
+        setTinggiPapanKetik(kejadian?.endCoordinates?.height ?? 0);
+      }),
+      Keyboard.addListener(peristiwaSembunyi, () => setTinggiPapanKetik(0)),
+    ];
+
+    return () => langganan.forEach((satu) => satu.remove());
+  }, []);
+
+  const papanKetikTerbuka = tinggiPapanKetik > 0;
+
+  // Dengan papan ketik tertutup, kolom ketik sudah berdiri tepat di atas bilah
+  // tab — bilah itu menempel di dasar layar dan ikut mengambil ruang di dalam
+  // susunan layar, bukan menumpuk di atas isinya. Jadi inset bawah layar sudah
+  // diurus bilah tab, dan di sini cukup sedikit ruang napas.
+  //
+  // Saat papan ketik muncul, ia menutupi bagian bawah layar berikut bilah
+  // tabnya, jadi jaraknya dihitung ulang dari ujung layar.
+  const jarakBawah = papanKetikTerbuka
+    ? tinggiPapanKetik + (Platform.OS === 'android' ? insets.bottom : 0) + 8
+    : 8;
+
+  // Papan ketik yang muncul memakan ruang gulung, jadi pesan terakhir perlu
+  // dinaikkan lagi supaya tidak tertutup kolom ketik.
+  useEffect(() => {
+    if (papanKetikTerbuka) {
+      gulir.current?.scrollToEnd({ animated: true });
+    }
+  }, [papanKetikTerbuka]);
 
   const tambahPesan = (dari, isi) => {
     nomor.current += 1;
@@ -89,15 +145,7 @@ export default function ChatScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      // Di Android, jendela sudah mengecil sendiri saat papan ketik muncul,
-      // jadi menambahkan perilaku di sini justru menggeser isinya dua kali.
-      // Di iOS tidak ada penyesuaian bawaan, jadi perlu digeser manual, dan
-      // geserannya dihitung dari bawah kepala halaman.
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? tinggiKepala : 0}
-      style={styles.layar}
-    >
+    <View style={styles.layar}>
       <ScrollView
         contentContainerStyle={styles.isi}
         keyboardShouldPersistTaps="handled"
@@ -121,7 +169,16 @@ export default function ChatScreen() {
                 butir.dari === 'galat' && styles.teksGalat,
               ]}
             >
-              {butir.teks}
+              {/* Jawaban model dipecah lebih dulu: penanda **tebal** yang
+                  ditulisnya harus jadi huruf tebal sungguhan, bukan bintang
+                  yang tercetak. Tiap potongan dibungkus Text sendiri, termasuk
+                  yang biasa — di React Native elemen di dalam daftar butuh
+                  kunci, dan teks polos tidak bisa diberi kunci. */}
+              {pecahTebal(butir.teks).map((bagian, urutan) => (
+                <Text key={urutan} style={bagian.tebal ? styles.tebal : null}>
+                  {bagian.teks}
+                </Text>
+              ))}
             </Text>
           </View>
         ))}
@@ -161,7 +218,7 @@ export default function ChatScreen() {
           )}
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -210,6 +267,12 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: font.body,
     lineHeight: 20,
+  },
+  // Potongan **tebal** dari jawaban model. Warnanya sengaja tidak diatur:
+  // potongan ini selalu berada di dalam teks induknya, jadi pewarnaan induk —
+  // termasuk pesan galat yang merah — tetap menurun ke sini.
+  tebal: {
+    fontWeight: '700',
   },
   teksPengguna: {
     color: colors.onBrand,

@@ -53,8 +53,8 @@ function chipSebaran(banks) {
   if (datar > 0) potongan.push({ key: 'datar', label: `${datar} tidak bergerak`, tone: 'netral' });
 
   // Penyebutnya selalu jumlah bank yang dipantau, bukan yang datanya ada.
-  // Kalau memakai yang ada, satu bank yang gagal dimuat akan mengubah "3 dari
-  // 4" menjadi "seluruh 3 bank" — terbaca seolah itu semua banknya.
+  // Kalau memakai yang ada, satu bank yang gagal dimuat akan mengubah "4 dari
+  // 5" menjadi "seluruh 4 bank" — terbaca seolah itu semua banknya.
   if (tanpaData > 0) {
     potongan.push({ key: 'tanpaData', label: `${tanpaData} belum ada data`, tone: 'netral' });
   }

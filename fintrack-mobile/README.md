@@ -1,6 +1,6 @@
 # FinTrack Mobile
 
-Aplikasi Expo untuk melihat ringkasan harga empat bank, histori 30 hari bursa, dan ranking perubahan harian.
+Aplikasi Expo untuk melihat ringkasan harga bank pantauan, histori harga, skor relatif, dan ranking perubahan harian.
 
 ## Menjalankan aplikasi
 

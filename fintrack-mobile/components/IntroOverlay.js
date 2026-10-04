@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Animated, StyleSheet, useAnimatedValue } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Animated, StyleSheet } from 'react-native';
 
 import { colors } from '../config/theme';
 import LogoMark from './LogoMark';
@@ -27,7 +27,19 @@ const MEMUDAR_MS = 400;
  *   memudar. Pemanggil yang melepasnya dari pohon komponen.
  */
 export default function IntroOverlay({ onSelesai }) {
-  const pudar = useAnimatedValue(1);
+  // Bentuknya sengaja bukan useAnimatedValue: React Native 0.86 memang
+  // menyediakannya, tapi react-native-web belum mengekspornya, jadi layar ini
+  // melempar "useAnimatedValue is not a function" begitu aplikasi dibuka di
+  // browser.
+  //
+  // Nilainya juga tidak disimpan lewat useRef, walau itu pola lama yang paling
+  // sering ditulis untuk Animated.Value. Aturan react-hooks/refs menolak
+  // membaca `.current` selama render karena render seharusnya tidak bergantung
+  // pada ref. useState dengan penginisialisasi malas memberi hasil yang sama
+  // persis — dibuat sekali saat komponen ini dipasang, tidak pernah dibuat
+  // ulang saat digambar ulang, dan setter-nya memang tidak pernah dipanggil —
+  // tanpa melanggar aturan itu dan tanpa perlu satu pun eslint-disable.
+  const [pudar] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     const jeda = setTimeout(() => {

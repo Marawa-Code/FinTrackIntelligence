@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import Disclaimer from '../components/Disclaimer';
-import { TAB_BAR_CLEARANCE } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
 import { ambilJson } from '../utils/ambil';
 import { changeTone } from '../utils/scoreTone';
@@ -174,7 +173,6 @@ export default function AnomalyScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: TAB_BAR_CLEARANCE,
   },
   centered: {
     alignItems: 'center',

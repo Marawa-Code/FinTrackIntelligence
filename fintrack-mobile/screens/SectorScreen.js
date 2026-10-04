@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import Disclaimer from '../components/Disclaimer';
-import { TAB_BAR_CLEARANCE } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
 import { ambilJson } from '../utils/ambil';
 import { rupiahSingkat } from '../utils/rupiah';
@@ -42,6 +41,7 @@ const pangsaSektor = (nilai, total) => {
 
 export default function SectorScreen({ navigation }) {
   const [sektor, setSektor] = useState(null);
+  const [anggota, setAnggota] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -52,6 +52,7 @@ export default function SectorScreen({ navigation }) {
     async function loadSector() {
       setLoading(true);
       setError('');
+      setAnggota([]);
       try {
         const data = await ambilJson('/api/sector/banks');
         if (!data || !Array.isArray(data.boards)) {
@@ -65,6 +66,17 @@ export default function SectorScreen({ navigation }) {
         }
       } finally {
         if (isMounted) setLoading(false);
+      }
+
+      // Daftar anggota dimuat setelah laporan sektor, dan kegagalannya tidak
+      // menjatuhkan layar. Laporan sektor tetap utuh tanpa daftar nama, dan itu
+      // tetap berguna — sedangkan menggagalkan seluruh layar karena bagian
+      // paling bawahnya kosong jelas lebih merugikan.
+      try {
+        const data = await ambilJson('/api/sector/members');
+        if (isMounted && Array.isArray(data?.members)) setAnggota(data.members);
+      } catch (error) {
+        console.warn('Gagal memuat daftar anggota subsektor:', error);
       }
     }
 
@@ -99,6 +111,16 @@ export default function SectorScreen({ navigation }) {
   const valuasi = sektor.valuation ?? {};
   const jumlahBank = sektor.total_companies == null ? null : Number(sektor.total_companies);
   const papan = sektor.boards.filter((item) => item.rows.length > 0);
+  // Jumlah baris terpanjang di antara papan yang benar-benar tampil. Angkanya
+  // tidak ditulis mati di catatan kaki: batas barisnya ditentukan backend, dan
+  // catatan yang menyebut angka keliru membuat orang mengira daftarnya
+  // terpotong padahal tidak.
+  const barisPapan = papan.reduce((terpanjang, item) => Math.max(terpanjang, item.rows.length), 0);
+  // Daftar anggota datang dari backend tanpa urutan yang dijanjikan, sedangkan
+  // yang dicari orang di daftar sepanjang ini adalah satu kode tertentu.
+  const bankLain = anggota
+    .filter((bank) => bank.tracked !== true)
+    .sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
 
   const perubahan = [
     { kunci: 'Satu minggu', nilai: modal.change_1w },
@@ -221,10 +243,37 @@ export default function SectorScreen({ navigation }) {
         </View>
       ))}
 
+      {bankLain.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.judulCard}>
+            {bankLain.length} BANK LAIN DI SUBSEKTOR INI
+          </Text>
+          <Text style={styles.catatanCard}>
+            Nama saja, tanpa skor maupun harga. Skor di aplikasi ini relatif terhadap kelompok
+            bank pantauan, jadi bank di luar kelompok itu memang tidak punya — bukan nol,
+            melainkan tidak terdefinisi. Harga per bank pun menuntut satu permintaan tersendiri
+            ke sumber data, dan itu tidak dibayar di depan untuk bank yang belum tentu dibuka.
+            Bank di daftar ini tetap bisa dipilih di tab Adu.
+          </Text>
+          <View style={styles.daftarAnggota}>
+            {bankLain.map((bank) => (
+              <View key={bank.symbol} style={styles.anggotaBaris}>
+                <Text style={styles.anggotaSimbol}>{bank.symbol}</Text>
+                <Text style={styles.anggotaNama} numberOfLines={1}>
+                  {bank.name ?? '—'}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <Text style={styles.catatanKaki}>
-        Papan peringkat memuat lima bank teratas per ukuran. Subsektor ini berisi{' '}
-        {jumlahBank == null ? 'lebih banyak' : `${jumlahBank}`} bank, dan hanya empat bank
-        berlabel Detail yang punya analisis lengkap di aplikasi ini.
+        {barisPapan > 0
+          ? `Papan peringkat memuat ${barisPapan} bank teratas per ukuran. `
+          : ''}
+        Subsektor ini berisi {jumlahBank == null ? 'lebih banyak' : `${jumlahBank}`} bank; yang
+        bertanda Detail punya analisis skor lengkap, sedangkan sisanya hanya nama.
       </Text>
 
       <Disclaimer />
@@ -235,7 +284,6 @@ export default function SectorScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: TAB_BAR_CLEARANCE,
   },
   centered: {
     alignItems: 'center',
@@ -405,6 +453,30 @@ const styles = StyleSheet.create({
     fontSize: font.micro,
     lineHeight: 17,
     marginTop: 14,
+  },
+  // Dua kolom, bukan satu: 43 nama dalam satu kolom berarti layar ini berakhir
+  // dengan gulungan sepanjang layar penuh yang isinya cuma nama. Dua kolom
+  // memangkasnya jadi separuh tanpa membuat namanya terpotong lebih sering.
+  daftarAnggota: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    rowGap: 12,
+  },
+  anggotaBaris: {
+    paddingRight: 10,
+    width: '50%',
+  },
+  anggotaSimbol: {
+    color: colors.ink,
+    fontSize: font.body,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '700',
+  },
+  anggotaNama: {
+    color: colors.body,
+    fontSize: font.micro,
+    marginTop: 2,
   },
   emptyTitle: {
     color: colors.ink,

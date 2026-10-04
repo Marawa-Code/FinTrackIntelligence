@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import Disclaimer from '../components/Disclaimer';
-import { TAB_BAR_CLEARANCE } from '../config/layout';
 import { colors, font, radius } from '../config/theme';
 import { ambilJson } from '../utils/ambil';
 import { changeTone, scoreTone } from '../utils/scoreTone';
@@ -100,7 +99,8 @@ export default function RankingScreen({ navigation }) {
       <Text style={styles.eyebrow}>SKOR &amp; PERBANDINGAN</Text>
       <Text style={styles.title}>Ranking bank</Text>
       <Text style={styles.subtitle}>
-        Skor relatif 0–100 antar empat bank. Angka 50 berarti persis rata-rata keempatnya.
+        Skor relatif 0–100 antar {ranking.length} bank. Angka 50 berarti persis rata-rata
+        kelompok itu.
       </Text>
 
       {ranking.length > 1 ? (
@@ -238,7 +238,6 @@ export default function RankingScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: TAB_BAR_CLEARANCE,
     gap: 12,
   },
   loading: {

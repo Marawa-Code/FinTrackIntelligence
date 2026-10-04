@@ -1,19 +1,27 @@
 /**
- * Geometri bilah tab terapung.
+ * Geometri bilah tab.
  *
- * Tinggi dan jaraknya dipakai App.js untuk menggambar bilahnya, sedangkan
- * TAB_BAR_CLEARANCE dipakai keempat layar bertab sebagai jarak gulung tambahan
- * di bagian bawah.
+ * Bilahnya menempel penuh di dasar layar dan ikut mengambil ruang di dalam
+ * susunan layar, bukan terapung di atas isinya. Karena itu React Navigation
+ * sudah menyisakan ruangnya sendiri, dan tiap layar tidak perlu lagi
+ * menambahkan jarak gulung khusus di bagian bawah.
  *
- * Bilahnya terapung di atas isi layar, jadi React Navigation tidak lagi
- * menyisakan ruang untuknya di dalam layar seperti bilah biasa. Jarak itu harus
- * diberikan sendiri oleh tiap layar — kalau tidak, baris terakhir pada daftar
- * akan tertutup bilah.
+ * Tingginya dihitung bersama tinggi bilah sistem Android di App.js, karena
+ * angka itu baru diketahui saat aplikasi berjalan.
  */
 export const TAB_BAR_HEIGHT = 64;
-export const TAB_FLOAT_GAP = 12;
-export const TAB_BAR_RADIUS = 18;
 
-// Tinggi bilah + jarak bawahnya + tinggi bilah sistem Android (paling besar
-// 48 untuk navigasi tiga tombol) + sedikit ruang napas.
-export const TAB_BAR_CLEARANCE = 128;
+/**
+ * Geometri halaman versi web.
+ *
+ * Di browser, isi halaman dibatasi lebarnya lalu ditaruh di tengah, karena satu
+ * baris teks yang melintang selebar monitor sulit dibaca: mata harus menempuh
+ * jarak jauh untuk pindah ke baris berikutnya. Angkanya dipakai bersama oleh
+ * kepala halaman dan isi layar, supaya tombol di kepala halaman sejajar dengan
+ * tepi kiri kartu di bawahnya. Tanpa satu sumber, keduanya pelan-pelan
+ * bergeser sendiri-sendiri dan terlihat tidak satu baris.
+ *
+ * Tidak dipakai sama sekali di ponsel.
+ */
+export const LEBAR_MAKS_HALAMAN = 1160;
+export const PADDING_HALAMAN = 32;

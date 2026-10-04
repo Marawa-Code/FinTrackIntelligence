@@ -2,7 +2,7 @@
  * Urutan daftar bank di tab Bank.
  *
  * Skor, kapitalisasi pasar, dan perubahan harian menjawab tiga pertanyaan
- * berbeda tentang empat bank yang sama, dan ketiganya sudah ikut terunduh di
+ * berbeda tentang bank-bank yang sama, dan ketiganya sudah ikut terunduh di
  * muatan yang sama. Karena itu berpindah urutan tidak menambah permintaan baru
  * ke Sectors.
  *

@@ -46,11 +46,17 @@ export const colors = {
   warnText: '#8A6420',
 
   // Garis pembanding di grafik skor bergerak. Dibedakan lewat kepekatan, bukan
-  // warna warni: bank yang sedang dibuka memakai `brand`, dan tiga nada abu ini
+  // warna warni: bank yang sedang dibuka memakai `brand`, dan empat nada abu ini
   // sengaja lebih redup supaya ia tetap yang paling menonjol.
+  //
+  // Jumlahnya empat karena bank pantauan ada lima: satu untuk bank yang dibuka,
+  // sisanya untuk para pembanding. Kalau paletnya lebih sedikit daripada
+  // pembandingnya, dua bank akan memakai nada yang sama persis dan garisnya
+  // tertukar saat dibaca.
   peerLineA: '#7E9C95',
   peerLineB: '#A3BAB3',
   peerLineC: '#C4D3CE',
+  peerLineD: '#DEE7E4',
 };
 
 export const radius = {

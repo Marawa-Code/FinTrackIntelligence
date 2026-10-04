@@ -191,12 +191,17 @@ export default function DetailScreen({ route }) {
   const rentangTerakhir =
     [...history].reverse().find((item) => item.high != null && item.low != null) ?? null;
 
-  // Skor bergerak. Backend mengirim satu titik per tanggal berisi skor keempat
-  // bank pada hari itu, jadi barisnya tinggal dibalik: tanggal jadi sumbu x,
-  // simbol jadi seri.
+  // Skor bergerak. Backend mengirim satu titik per tanggal berisi skor tiap
+  // bank pantauan pada hari itu, jadi barisnya tinggal dibalik: tanggal jadi
+  // sumbu x, simbol jadi seri.
   const simbolTren = tren ? [...new Set(tren.points.flatMap((titik) => Object.keys(titik.scores ?? {})))] : [];
   const pembandingTren = simbolTren.filter((item) => item !== symbol).sort();
   const adaSkorSendiri = simbolTren.includes(symbol);
+  // Jumlahnya diambil dari data, bukan ditulis "empat": kelompok bank pantauan
+  // sudah pernah bertambah, dan label yang menyebut angka keliru lebih buruk
+  // daripada label yang tidak menyebut angka sama sekali.
+  const labelRataRata =
+    simbolTren.length > 1 ? `rata-rata ${simbolTren.length} bank` : 'rata-rata kelompok';
   const barisTren = tren
     ? tren.points.map((titik) => ({ ...titik.scores, label: String(titik.date).slice(5) }))
     : [];
@@ -209,9 +214,14 @@ export default function DetailScreen({ route }) {
   const selisihTren =
     typeof skorAwal === 'number' && typeof skorAkhir === 'number' ? skorAkhir - skorAwal : null;
 
-  // Tiga nada abu untuk tiga pesaing, dipasangkan setelah diurutkan menurut
+  // Nada abu untuk para pembanding, dipasangkan setelah diurutkan menurut
   // simbol supaya warna sebuah bank tidak berpindah saat bank lain dibuka.
-  const WARNA_PEMBANDING = [colors.peerLineA, colors.peerLineB, colors.peerLineC];
+  const WARNA_PEMBANDING = [
+    colors.peerLineA,
+    colors.peerLineB,
+    colors.peerLineC,
+    colors.peerLineD,
+  ];
   const seriTren = adaSkorSendiri
     ? [
         { color: colors.brand, label: symbol, strokeWidth: 3, yKey: symbol },
@@ -252,8 +262,14 @@ export default function DetailScreen({ route }) {
         <View style={styles.chartCard}>
           <Text style={styles.chartTitle}>Skor bergerak</Text>
           <Text style={styles.chartSubtitle}>
-            Skor komposit {symbol} dibandingkan tiga bank lain, dihitung ulang tiap tanggal pada
-            rentang ini
+            {/* Jumlah pembandingnya disebut dari data, bukan ditulis "tiga":
+                kelompok bank pantauan sudah pernah bertambah, dan subjudul yang
+                menyebut angka keliru lebih buruk daripada yang tidak
+                menyebutnya sama sekali. Kalau tidak ada pembanding sama sekali,
+                kalimatnya dibuang, bukan ditulis "0 bank lain". */}
+            {pembandingTren.length > 0
+              ? `Skor komposit ${symbol} dibandingkan ${pembandingTren.length} bank lain, dihitung ulang tiap tanggal pada rentang ini`
+              : `Skor komposit ${symbol}, dihitung ulang tiap tanggal pada rentang ini`}
           </Text>
           <LineChart
             data={barisTren}
@@ -271,7 +287,7 @@ export default function DetailScreen({ route }) {
             referenceLines={[
               {
                 color: colors.border,
-                label: 'rata-rata empat bank',
+                label: labelRataRata,
                 labelColor: colors.faint,
                 labelFontSize: font.micro,
                 strokeDasharray: [4, 4],
@@ -295,7 +311,8 @@ export default function DetailScreen({ route }) {
             kalender yang berakhir di tanggal itu, memakai rumus yang sama dengan skor besar di
             atas. Titik terakhir memakai sumber momentum yang sama pula, jadi ujung garisnya
             sama persis dengan angka besar itu. Karena skornya relatif antar bank pada hari
-            tersebut, yang terbaca di sini adalah pergeseran posisi terhadap tiga bank lain,
+            tersebut, yang terbaca di sini adalah pergeseran posisi terhadap{' '}
+            {pembandingTren.length > 0 ? `${pembandingTren.length} bank lain` : 'kelompoknya'},
             bukan naik-turunnya satu bank dari waktu ke waktu.
           </Text>
         </View>
@@ -341,8 +358,8 @@ export default function DetailScreen({ route }) {
             );
           })}
           <Text style={styles.catatanCard}>
-            Skor 50 berarti persis rata-rata keempat bank. Angka di atas bersifat relatif,
-            bukan penilaian mutlak.
+            Skor 50 berarti persis {labelRataRata}. Angka di atas bersifat relatif, bukan
+            penilaian mutlak.
           </Text>
         </View>
       )}
