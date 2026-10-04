@@ -58,7 +58,7 @@ kosong = [bank["symbol"] for bank in hasil if bank["score"] is None]
 if kosong:
     print(f"Skor kosong untuk: {kosong} -> komponen tidak lengkap, cek data historisnya.")
 else:
-    print("Keempat bank punya skor. Fitur skor siap dipakai.")
+    print(f"Semua {len(hasil)} bank pantauan punya skor. Fitur skor siap dipakai.")
 
 print("\n=== CEK 4: sebaran skor ===")
 skor = [bank["score"] for bank in hasil if bank["score"] is not None]
@@ -69,7 +69,8 @@ if skor:
     if max(skor) > 93.4 or min(skor) < 6.6:
         print(
             "PERINGATAN: ada komponen yang menyentuh batas penjepitan 0/100. "
-            "Untuk 4 bank, skor komponen seharusnya mentok di 93,3 / 6,7."
+            "Berapa pun jumlah bank pantauan, skor komponen seharusnya mentok "
+            "di 93,3 / 6,7 karena simpangannya diturunkan dari jumlah anggota."
         )
 
 print("\n=== CEK 5: riwayat anomali bisa ditampilkan di video? ===")

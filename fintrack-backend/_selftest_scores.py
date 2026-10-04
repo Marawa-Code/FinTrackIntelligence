@@ -6,6 +6,9 @@ Jalankan dari folder fintrack-backend:
     .\\.venv\\Scripts\\python.exe _selftest_scores.py
 """
 
+import statistics
+from datetime import date
+
 import main as m
 
 
@@ -41,19 +44,33 @@ check("daily returns", [round(v, 4) for v in m._daily_returns([100.0, 110.0, 99.
 check("pembagi nol dilewati", m._daily_returns([0.0, 10.0]), [])
 
 # --- skor peer: 50 = rata-rata, bukan min-max ---
+#
+# Angka harapannya diturunkan dari PEER_SCORE_SIGMA, bukan ditulis mati. Yang
+# diuji di sini adalah BENTUK kurvanya — 50 tepat di rata-rata, jauh dari 0/100
+# ala min-max — sedangkan angka tepatnya ikut bergeser setiap jumlah bank
+# pantauan berubah, dan itu memang pernah terjadi: kelompoknya dari empat bank
+# jadi lima.
+PEER = {"A": 10.0, "B": 0.0, "C": 5.0}
+SIGMA_PEER = statistics.pstdev(list(PEER.values()))
+
+
+def skor_peer_harapan(nilai):
+    return round(50.0 + m.PEER_SCORE_SIGMA * (nilai - 5.0) / SIGMA_PEER, 1)
+
+
 check(
     "peer score: terbaik tidak otomatis 100",
-    round(m._peer_score({"A": 10.0, "B": 0.0, "C": 5.0})["A"], 1),
-    80.6,
+    round(m._peer_score(PEER)["A"], 1),
+    skor_peer_harapan(10.0),
 )
 check(
     "peer score: terburuk tidak otomatis 0",
-    round(m._peer_score({"A": 10.0, "B": 0.0, "C": 5.0})["B"], 1),
-    19.4,
+    round(m._peer_score(PEER)["B"], 1),
+    skor_peer_harapan(0.0),
 )
 check(
     "peer score: yang persis rata-rata dapat 50",
-    round(m._peer_score({"A": 10.0, "B": 0.0, "C": 5.0})["C"], 1),
+    round(m._peer_score(PEER)["C"], 1),
     50.0,
 )
 check(
@@ -61,10 +78,14 @@ check(
     m._peer_score({"A": 3.0, "B": 3.0}),
     {"A": 50.0, "B": 50.0},
 )
+# Nilai kosong tetap kosong, dan yang tersisa tetap simetris mengelilingi 50.
+# Keduanya berlaku berapa pun jumlah anggotanya, jadi tidak perlu angka mati.
 check(
     "peer score: nilai kosong tetap kosong",
     m._peer_score({"A": 1.0, "B": None, "C": 3.0}),
-    {"A": 25.0, "B": None, "C": 75.0},
+    predicate=lambda hasil: hasil["B"] is None
+    and hasil["A"] < 50 < hasil["C"]
+    and round(50 - hasil["A"], 1) == round(hasil["C"] - 50, 1),
 )
 check(
     "peer score: semua kosong -> semua kosong",
@@ -196,10 +217,17 @@ check(
     50.0,
 )
 
-# --- batas atas realistis: semua komponen pada |z| maksimum n=4 ---
-batas_atas = 50.0 + m.PEER_SCORE_SIGMA * (4 - 1) ** 0.5
+# --- batas atas realistis ---
+#
+# |z| maksimum yang mungkin untuk n anggota adalah akar(n - 1), jadi batas atas
+# skor ditentukan jumlah anggotanya — dan itulah yang diuji: berapa pun jumlah
+# bank pantauan, puncaknya harus tetap 93,3 dan tidak pernah menyentuh
+# penjepitan 100. Kalau simpangannya suatu saat dipatok tetap alih-alih
+# diturunkan dari jumlah anggota, uji ini yang menangkapnya.
+z_maks = (len(m.BANK_SYMBOLS) - 1) ** 0.5
+batas_atas = 50.0 + m.PEER_SCORE_SIGMA * z_maks
 check(
-    "batas atas skor komponen (akar(n-1) = 1,73)",
+    f"batas atas skor komponen untuk {len(m.BANK_SYMBOLS)} bank pantauan",
     round(batas_atas, 1),
     93.3,
 )
@@ -208,6 +236,16 @@ check(
     batas_atas,
     predicate=lambda nilai: nilai < 100,
 )
+
+# Sifatnya harus bertahan untuk jumlah bank berapa pun, bukan hanya yang
+# kebetulan sedang dipakai.
+for jumlah in (3, 4, 5, 6, 8, 10, 12, 20):
+    sigma = m.SCORE_PEER_MAX_SPREAD / (jumlah - 1) ** 0.5
+    check(
+        f"batas atas tetap 93,3 bila bank pantauannya {jumlah}",
+        round(50.0 + sigma * (jumlah - 1) ** 0.5, 1),
+        93.3,
+    )
 
 # --- sinyal ---
 sinyal = m._build_signals(
@@ -287,6 +325,13 @@ check("perubahan harian terbaca", ringkas[0]["daily_close_change"], 0.0125)
 
 m._cache.clear()
 try:
+    # Diambil dari BANK_SYMBOLS, bukan ditulis "BBCA, BMRI, BBNI": daftar bank
+    # pantauan sudah pernah berubah, dan harapan yang ditulis mati akan membuat
+    # uji ini gagal karena hal yang benar.
+    bank_selain_bbri = [simbol for simbol in m.BANK_SYMBOLS if simbol != "BBRI"]
+    if len(bank_selain_bbri) == len(m.BANK_SYMBOLS):
+        raise SystemExit("BBRI tidak ada di BANK_SYMBOLS; uji ini kehilangan sasarannya.")
+
     def _get_dengan_satu_gagal(url, *args, **kwargs):
         if "BBRI" in url:
             raise m.requests.RequestException("jaringan putus")
@@ -294,13 +339,26 @@ try:
 
     m.requests.get = _get_dengan_satu_gagal
     sebagian = m.get_banks_summary()
-    check("satu simbol gagal tidak mengosongkan sisanya", len(sebagian), 3)
+    check(
+        "satu simbol gagal tidak mengosongkan sisanya",
+        len(sebagian),
+        len(m.BANK_SYMBOLS) - 1,
+    )
     check(
         "simbol yang gagal tidak ikut terkirim",
         [bank["symbol"] for bank in sebagian],
-        ["BBCA", "BMRI", "BBNI"],
+        bank_selain_bbri,
     )
     check("hasil sebagian tidak di-cache", m._get_cached("banks:summary"), None)
+    # Ringkasan kini juga disimpan per simbol. Justru itu gunanya: bank yang
+    # berhasil tidak perlu diambil ulang pada percobaan berikutnya hanya karena
+    # satu bank lain gagal.
+    check(
+        "simbol yang berhasil tetap di-cache sendiri",
+        m._get_cached("banks:summary:BBCA") is not None,
+        True,
+    )
+    check("simbol yang gagal tidak di-cache", m._get_cached("banks:summary:BBRI"), None)
 finally:
     m.requests.get = _get_asli
     m._cache.clear()
@@ -348,17 +406,25 @@ try:
     m._fetch_history = _fetch_dengan_satu_gagal
 
     hasil = m.get_banks_intelligence()
-    check("satu bank gagal -> sisanya tetap dinilai", len(hasil), 3)
-    check("peringkat tetap berurutan tanpa bolong", [bank["rank"] for bank in hasil], [1, 2, 3])
+    bank_selain_bmri = [simbol for simbol in m.BANK_SYMBOLS if simbol != "BMRI"]
+    if len(bank_selain_bmri) == len(m.BANK_SYMBOLS):
+        raise SystemExit("BMRI tidak ada di BANK_SYMBOLS; uji ini kehilangan sasarannya.")
+
+    check("satu bank gagal -> sisanya tetap dinilai", len(hasil), len(bank_selain_bmri))
+    check(
+        "peringkat tetap berurutan tanpa bolong",
+        [bank["rank"] for bank in hasil],
+        list(range(1, len(bank_selain_bmri) + 1)),
+    )
     check(
         "bank yang gagal tidak ikut dinilai",
         sorted(bank["symbol"] for bank in hasil),
-        ["BBCA", "BBNI", "BBRI"],
+        sorted(bank_selain_bmri),
     )
     check("hasil sebagian tidak di-cache", m._get_cached("banks:intelligence"), None)
     check("nilai mentah momentum ikut dikirim", hasil[0]["momentum"], 0.01)
     check(
-        "peer menyusut jadi tiga, skor tetap relatif",
+        "peer menyusut, skor tetap berada di rentang 0-100",
         [bank["score"] for bank in hasil],
         predicate=lambda nilai: all(0 <= skor <= 100 for skor in nilai),
     )
@@ -366,5 +432,114 @@ finally:
     m.get_banks_summary = _ringkas_asli
     m._fetch_history = _fetch_asli
     m._cache.clear()
+
+
+# --- tanggal akhir yang ditolak Sectors sebagai "masih di masa depan" ---
+#
+# Jam komputer bisa berada di depan jam Sectors — di UTC+7 itu terjadi rutin
+# tiap dini hari — dan dulu satu hari selisih itu mematikan seluruh analisis
+# skor: setiap permintaan histori dijawab 400, jadi tidak ada bank yang punya
+# cukup data. Yang diuji di sini pemunduran tanggalnya, bukan zona waktunya,
+# jadi tidak perlu menunggu dini hari untuk menangkapnya kembali.
+class _ResponsPenolakan:
+    def __init__(self, status_code, text):
+        self.status_code = status_code
+        self.text = text
+
+
+PESAN_MASA_DEPAN = '{"error":"End date cannot be in the future. Today is 2026-10-03."}'
+
+
+def _galat_histori(status_code, text):
+    galat = m.requests.RequestException(f"{status_code} Client Error")
+    galat.response = _ResponsPenolakan(status_code, text)
+    return galat
+
+
+_akhir_diminta = []
+
+
+def _get_mundur(url, *args, **kwargs):
+    akhir = kwargs["params"]["end"]
+    _akhir_diminta.append(akhir)
+    if akhir == "2026-10-04":
+        raise _galat_histori(400, PESAN_MASA_DEPAN)
+    return _FakeResponse([{"date": akhir, "close": 100.0}])
+
+
+m._cache.clear()
+try:
+    m.requests.get = _get_mundur
+    hasil_mundur = m._fetch_history("BBCA", date(2026, 7, 26), date(2026, 10, 4))
+finally:
+    m.requests.get = _get_asli
+    m._cache.clear()
+
+check(
+    "tanggal akhir dimundurkan sehari lalu dicoba lagi",
+    _akhir_diminta,
+    ["2026-10-04", "2026-10-03"],
+)
+check(
+    "yang dipakai adalah hasil percobaan kedua",
+    [baris["date"] for baris in hasil_mundur],
+    ["2026-10-03"],
+)
+
+
+# 400 yang bukan soal tanggal tidak boleh memicu pemunduran: percobaannya cuma
+# menutupi sebab aslinya, dan pesan galat yang benar justru tidak sampai.
+def _get_tolak_bukan_tanggal(url, *args, **kwargs):
+    _akhir_diminta.append(kwargs["params"]["end"])
+    raise _galat_histori(400, '{"error":"start tidak sah"}')
+
+
+_akhir_diminta = []
+m._cache.clear()
+try:
+    m.requests.get = _get_tolak_bukan_tanggal
+    try:
+        m._fetch_history("BBCA", date(2026, 7, 26), date(2026, 10, 4))
+        status_400_lain = "tidak melempar"
+    except m.HTTPException as exc:
+        status_400_lain = exc.status_code
+finally:
+    m.requests.get = _get_asli
+    m._cache.clear()
+
+check("400 yang bukan soal tanggal tidak dicoba ulang", status_400_lain, 502)
+check("dan hanya menembak Sectors sekali", _akhir_diminta, ["2026-10-04"])
+
+
+# Pemundurannya berhenti di batasnya, dan yang dilaporkan adalah pesan Sectors
+# yang asli — bukan percobaan tanpa ujung.
+def _get_selalu_tolak(url, *args, **kwargs):
+    _akhir_diminta.append(kwargs["params"]["end"])
+    raise _galat_histori(400, PESAN_MASA_DEPAN)
+
+
+_akhir_diminta = []
+m._cache.clear()
+try:
+    m.requests.get = _get_selalu_tolak
+    try:
+        m._fetch_history("BBCA", date(2026, 7, 26), date(2026, 10, 4))
+        pesan_habis = "tidak melempar"
+    except m.HTTPException as exc:
+        pesan_habis = exc.detail
+finally:
+    m.requests.get = _get_asli
+    m._cache.clear()
+
+check(
+    "percobaan berhenti di batasnya",
+    len(_akhir_diminta),
+    m._MAKS_MUNDUR_HARI + 1,
+)
+check(
+    "galat asli Sectors tetap diteruskan",
+    pesan_habis,
+    predicate=lambda teks: "HTTP 400" in teks and "future" in teks,
+)
 
 print("\nSemua uji lulus.")
