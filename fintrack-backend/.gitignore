@@ -2,3 +2,10 @@
 __pycache__/
 venv/
 .venv/
+
+# Skrip sekali-pakai: _cek_* menembak endpoint Sectors untuk memeriksa bentuk
+# responsnya, _uji_* menguji perhitungan di main.py. Alat kerja sementara,
+# bukan bagian aplikasi. _cek_endpoint.py dan _selftest_scores.py sudah
+# terlacak sejak dulu, dan pola di bawah tidak mencabut yang sudah terlacak.
+_cek_*.py
+_uji_*.py

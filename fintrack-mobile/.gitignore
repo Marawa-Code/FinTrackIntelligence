@@ -40,3 +40,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Skrip uji sekali jalan untuk util di folder ini: urutan bank, ringkasan
+# harian, teks tebal, dan perhitungan tenggat. Dijalankan dengan node langsung,
+# bukan bagian dari aplikasi.
+_uji_*.mjs

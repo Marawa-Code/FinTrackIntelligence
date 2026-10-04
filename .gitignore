@@ -1,6 +1,20 @@
 # Konfigurasi Claude Code yang bersifat pribadi: izin tool dan preferensi lokal.
-# settings.json sengaja tidak diabaikan supaya bisa di-commit kalau ingin dibagi.
+#
+# settings.json sempat dibiarkan terlacak supaya bisa di-commit kalau ingin
+# dibagi, tapi ternyata isinya hanya izin perintah yang terkumpul dari sesi
+# kerja lokal — Edge headless dan http.server untuk memeriksa tampilan web.
+# Tidak ada gunanya bagi orang lain, dan hanya berpengaruh di mesin ini. Kalau
+# nanti memang ingin dibagi, paksa dengan: git add -f .claude/settings.json
 .claude/settings.local.json
+.claude/settings.json
+
+# Kunci versi plugin skill Claude Code. Terikat ke pemasangan di mesin ini,
+# bukan ke aplikasinya.
+skills-lock.json
+
+# Bahan serah-terima desain ke Figma, ditulis untuk keperluan sendiri. Bukan
+# dokumentasi proyek; hapus baris ini kalau nanti mau dibagikan ke tim.
+tampilan.md
 
 # macOS
 .DS_Store
