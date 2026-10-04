@@ -1,11 +1,11 @@
 # FinTrack Intelligence
 
-Dashboard intelijen pasar lokal untuk membandingkan empat emiten perbankan IDX: BBCA, BBRI, BMRI, dan BBNI. Aplikasi mengambil data Sectors API melalui backend FastAPI, lalu menampilkan harga terakhir, perubahan harian, histori 30 hari bursa, dan ranking.
+Dashboard intelijen pasar lokal untuk membandingkan bank-bank IDX. Lima bank pantauan — BBCA, BBRI, BMRI, BBNI, dan BNLI — dapat skor komposit penuh, sementara 43 bank lain di subsektor perbankan tetap bisa dibuka detailnya dan diadu berpasangan. Aplikasi mengambil data Sectors API melalui backend FastAPI, lalu menampilkan harga terakhir, perubahan harian, histori harga, dan ranking.
 
 ## Struktur
 
 - `fintrack-backend/` — FastAPI yang menyimpan satu-satunya API key Sectors dan menyediakan cache in-memory 5 menit.
-- `fintrack-mobile/` — Expo React Native dengan screen Home, Detail, dan Ranking.
+- `fintrack-mobile/` — Expo React Native dengan tab Bank, Ranking, Sektor, Anomali, dan Chat, plus layar Detail Bank dan Adu Bank.
 
 ## Menjalankan lokal
 
@@ -18,8 +18,13 @@ Endpoint utama:
 - `GET /health`
 - `GET /api/banks/summary`
 - `GET /api/banks/{symbol}/history?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- `GET /api/banks/{symbol}/profile` — profil satu bank, termasuk bank di luar daftar pantauan
 - `GET /api/banks/ranking` — peringkat harian sederhana berdasarkan perubahan harga
 - `GET /api/banks/intelligence` — skor komposit 0–100, MA7/MA30, tren, volatilitas, dan sinyal anomali
+- `GET /api/banks/score-trend` — deret skor harian untuk grafik
+- `GET /api/sector/banks` — laporan subsektor perbankan
+- `GET /api/sector/members` — seluruh anggota subsektor dan status pantauannya
+- `POST /api/chat` — tanya jawab lewat OpenRouter
 
 ### Mobile
 
@@ -33,9 +38,11 @@ Aplikasi ini untuk demo lokal; API key tidak boleh dimasukkan ke aplikasi mobile
 
 ## Skor komposit dan sinyal
 
-Skor 0–100 di endpoint `/api/banks/intelligence` adalah **skor relatif**: tiap komponen diubah jadi z-score terhadap rata-rata empat bank, sehingga angka 50 berarti persis rata-rata keempatnya. Skor menunjukkan posisi sebuah bank dibanding tiga pesaingnya pada hari itu, bukan penilaian absolut. Bobotnya momentum 30%, tren 30%, stabilitas 20%, dan posisi MA 20%.
+Skor 0–100 di endpoint `/api/banks/intelligence` adalah **skor relatif**: tiap komponen diubah jadi z-score terhadap rata-rata bank pantauan, sehingga angka 50 berarti persis rata-rata kelompok itu. Skor menunjukkan posisi sebuah bank dibanding bank pantauan lainnya pada hari itu, bukan penilaian absolut. Bobotnya momentum 30%, tren 30%, stabilitas 20%, dan posisi MA 20%.
 
-Label skor memakai kata perbandingan ("di atas rata-rata", bukan "kuat"), karena bank bisa berlabel di atas rata-rata walaupun harganya sedang turun — bila ketiga pesaingnya turun lebih dalam. Backend juga menyertakan nilai mentah (MA7, MA30, tren, volatilitas, jarak harga ke MA, jumlah hari bursa) supaya gambaran absolutnya tetap terbaca, dan aplikasi menampilkannya berdampingan dengan skor tiap komponen.
+Konsekuensinya, bank di luar `BANK_SYMBOLS` **tidak punya skor sama sekali** — bukan berskor nol, melainkan tidak punya pembanding. Bank seperti itu tetap bisa dibuka detailnya dan diadu berpasangan; yang tidak ada hanyalah angka skornya.
+
+Label skor memakai kata perbandingan ("di atas rata-rata", bukan "kuat"), karena bank bisa berlabel di atas rata-rata walaupun harganya sedang turun — bila bank pantauan lain turun lebih dalam. Backend juga menyertakan nilai mentah (MA7, MA30, tren, volatilitas, jarak harga ke MA, jumlah hari bursa) supaya gambaran absolutnya tetap terbaca, dan aplikasi menampilkannya berdampingan dengan skor tiap komponen.
 
 Sinyal anomali memakai z-score perubahan harga harian terhadap sebaran 30 hari bursa sebelumnya; `|z| >= 2` ditandai sebagai lonjakan tidak wajar. Selain status hari terakhir, endpoint mengembalikan `anomaly_history`: seluruh lonjakan tidak wajar sepanjang jendela analisis (maksimal 5 terbaru, lengkap dengan tanggal, z-score, dan arah). Lonjakan volume ditandai bila volume terakhir mencapai dua kali rata-rata.
 
