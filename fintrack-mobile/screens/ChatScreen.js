@@ -25,21 +25,20 @@ import { pecahTebal } from '../utils/teksTebal';
 // sekaligus menjadi batas atas kalau backendnya sendiri menggantung.
 const TENGGAT_CHAT_MS = 75000;
 
-// Cakupannya sengaja disebut "semua bank", bukan hanya kelima yang dilacak
-// penuh, karena sejak backend ikut mengirim daftar seluruh anggota subsektor
-// perbankan, pertanyaan soal bank lain memang terjawab — walau tanpa harga.
-// Menyebut kelimanya saja akan membuat pengguna mengira bank lain tidak ada.
+// Pesan pembuka dari sistem: muncul begitu layar dibuka, sebelum pengguna
+// mengetik apa pun.
 //
-// Daftar banknya ditulis di sini, bukan diambil dari backend, dan itu memang
-// duplikat dari BANK_SYMBOLS. Kalau daftarnya berubah di backend, baris ini
-// ikut berubah; kalau tidak, teksnya berbohong soal bank mana yang punya harga
-// lengkap — persis kesalahan yang paling sulit terlihat karena tidak ada satu
-// pun galat yang muncul.
+// Bentuknya gelembung, bukan placeholder di kolom ketik. Kalimatnya panjang,
+// sedangkan kolom ketik cuma selebar satu baris — di sana teksnya akan
+// terpotong di tengah kalimat, dan pengguna tidak akan pernah tahu sisanya.
+//
+// Isinya sengaja tidak menyebut daftar bank. Cakupan jawabannya tetap seluruh
+// subsektor perbankan, tapi menyebut kelima bank pantauan di sini membuat
+// pengguna mengira yang lain tidak ada — padahal bank di luar daftar itu tetap
+// terjawab, walau tanpa angka harga lengkap.
 const PESAN_AWAL =
-  'Tanya apa saja soal saham bank di Bursa Efek Indonesia, termasuk yang di luar lima bank ' +
-  'pantauan: BBCA, BBRI, BMRI, BBNI, dan BNLI. Jawabannya disusun dari data ringkasan, ' +
-  'peringkat, dan papan peringkat terkini, bukan dari berita di luar itu. Lima bank pantauan ' +
-  'punya angka harga lengkap; bank lain baru sebatas peringkatnya.';
+  'Tanya apa saja soal saham bank di Bursa Efek Indonesia, atau tanyakan fitur apa saja ' +
+  'yang ada di aplikasi ini 👋';
 
 export default function ChatScreen() {
   const [pesan, setPesan] = useState([{ dari: 'bot', id: 'awal', teks: PESAN_AWAL }]);
